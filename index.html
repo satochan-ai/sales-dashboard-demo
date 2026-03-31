@@ -1,0 +1,2452 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>営業KPIダッシュボード</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#F0F2F5;color:#333;min-height:100vh}
+#loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:16px;font-size:15px;color:#555}
+.spinner{width:40px;height:40px;border:4px solid #DDD;border-top-color:#1A73E8;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#errorBox{display:none;max-width:600px;margin:60px auto;padding:24px;background:#FFF3F3;border:1px solid #F5C6C6;border-radius:8px}
+#errorBox h2{color:#C62828;margin-bottom:8px}
+#errorBox pre{font-size:12px;color:#555;white-space:pre-wrap;word-break:break-all}
+#app{display:none;max-width:1200px;margin:0 auto;padding:16px}
+header{background:linear-gradient(135deg,#1A73E8,#0D47A1);color:#FFF;padding:20px 24px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+header h1{font-size:20px;font-weight:700}
+.header-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.header-right label{font-size:13px;opacity:.85}
+select#monthSel{padding:6px 10px;border:none;border-radius:6px;font-size:13px;background:#FFF;color:#333;cursor:pointer;min-width:120px}
+.section{background:#FFF;border-radius:10px;padding:20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.section h2{font-size:15px;font-weight:700;color:#1A73E8;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #E8F0FE}
+/* KPI cards */
+#kpiCards{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:0}
+.kpi-card{background:#F8F9FA;border:1px solid #E0E0E0;border-radius:8px;padding:14px 12px;text-align:center;transition:transform .15s}
+.kpi-card:hover{transform:translateY(-2px)}
+.kpi-card.highlight{background:#E8F0FE;border-color:#1A73E8}
+.kpi-card .label{font-size:11px;color:#666;margin-bottom:6px;line-height:1.3}
+.kpi-card .value{font-size:24px;font-weight:700;color:#1A73E8}
+.kpi-card.highlight .value{color:#0D47A1}
+.kpi-card .unit{font-size:11px;color:#888;margin-top:2px}
+/* Funnel */
+#funnelWrap{display:flex;flex-direction:column;gap:6px}
+.funnel-row{display:flex;align-items:center;gap:10px}
+.funnel-bar-wrap{flex:1;background:#EEE;border-radius:4px;height:28px;overflow:hidden}
+.funnel-bar{height:100%;background:linear-gradient(90deg,#1A73E8,#42A5F5);border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:12px;color:#FFF;font-weight:600;white-space:nowrap;min-width:30px;transition:width .4s}
+.funnel-label{width:120px;font-size:12px;color:#444;text-align:right;flex-shrink:0}
+.funnel-count{width:40px;font-size:13px;font-weight:700;color:#1A73E8;text-align:right;flex-shrink:0}
+.funnel-rates{width:160px;font-size:11px;color:#555;flex-shrink:0}
+.funnel-rates .conv{color:#2E7D32}
+.funnel-rates .drop{color:#C62828}
+/* Comparison table */
+#compTable{width:100%;border-collapse:collapse;font-size:13px}
+#compTable th{background:#E8F0FE;padding:8px 10px;text-align:center;color:#1A73E8;font-weight:600;border:1px solid #D0D9F0}
+#compTable td{padding:8px 10px;text-align:center;border:1px solid #E8E8E8}
+#compTable tr:nth-child(even) td{background:#F8F9FA}
+.diff-up{color:#2E7D32;font-weight:600}
+.diff-down{color:#C62828;font-weight:600}
+.diff-same{color:#888}
+/* Data table */
+.table-wrap{overflow-x:auto}
+#dataTable{width:100%;border-collapse:collapse;font-size:12px;min-width:900px}
+#dataTable th{background:#1A73E8;color:#FFF;padding:8px 6px;text-align:center;position:sticky;top:0;z-index:1;font-size:11px}
+#dataTable td{padding:6px;text-align:center;border-bottom:1px solid #EEE;vertical-align:middle}
+#dataTable tr:hover td{background:#F0F4FF}
+#dataTable td.left{text-align:left}
+.badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600}
+.badge-ok{background:#E8F5E9;color:#2E7D32}
+.badge-ng{background:#FFEBEE;color:#C62828}
+.badge-gray{background:#F5F5F5;color:#888}
+/* 稼働明細テーブル */
+#contractTable{width:100%;border-collapse:collapse;font-size:12px;min-width:800px}
+#contractTable th{background:#1B5E20;color:#FFF;padding:7px 6px;text-align:center;font-size:11px}
+#contractTable td{padding:5px 6px;text-align:center;border-bottom:1px solid #EEE}
+#contractTable tr:hover td{background:#F1F8E9}
+#contractTable td.rate-auto{color:#888;font-size:11px}
+#contractTable td.rate-fixed{color:#E65100;font-weight:600}
+#contractTable td.money{font-weight:600;color:#1B5E20}
+/* 売上・粗利カード */
+.kpi-card.revenue{background:#E8F5E9;border-color:#2E7D32}
+.kpi-card.revenue .value{color:#1B5E20}
+/* 累積カード */
+.kpi-card.cumulative{background:#FFF8E1;border-color:#F9A825}
+.kpi-card.cumulative .value{color:#E65100}
+.kpi-cards-divider{grid-column:1/-1;border-top:2px dashed #CCC;margin:4px 0;font-size:11px;color:#888;padding-top:4px}
+/* 自動考察 */
+.insight-box{display:flex;flex-direction:column;gap:10px}
+.insight-item{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.6}
+.insight-item.bottleneck{background:#FFF3F3;border-left:4px solid #E53935}
+.insight-item.caution{background:#FFFDE7;border-left:4px solid #F9A825}
+.insight-item.good{background:#F1F8E9;border-left:4px solid #43A047}
+.insight-item.info{background:#E8F0FE;border-left:4px solid #1A73E8}
+.insight-item.trend{background:#F3E5F5;border-left:4px solid #8E24AA}
+.insight-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.insight-text{flex:1}
+.insight-label{font-weight:bold;margin-bottom:2px}
+.insight-action{color:#555;margin-top:4px;font-size:12px}
+.insight-action::before{content:'→ アクション：';font-weight:bold;color:#1A73E8}
+/* 前月比ミニカード */
+.mom-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:7px;margin:10px 0 6px}
+.mom-card{background:#FFF;border:1px solid #E0E0E0;border-radius:7px;padding:8px 10px;text-align:center}
+.mom-card .mc-label{font-size:10px;color:#666;margin-bottom:3px;white-space:nowrap}
+.mom-card .mc-cur{font-size:15px;font-weight:700;color:#222;margin-bottom:2px}
+.mom-card .mc-prev{font-size:10px;color:#999;margin-bottom:2px}
+.mom-card .mc-delta{font-size:12px;font-weight:700;padding:1px 6px;border-radius:10px;display:inline-block}
+.mc-delta.up{color:#1B5E20;background:#E8F5E9}
+.mc-delta.down{color:#B71C1C;background:#FFEBEE}
+.mc-delta.same{color:#555;background:#F5F5F5}
+.mom-summary{font-size:12px;color:#444;line-height:1.7;padding:7px 10px;background:rgba(255,255,255,0.55);border-radius:5px;margin-top:4px}
+/* 担当者別・上位会社別分析 */
+.analysis-wrap{overflow-x:auto}
+.analysis-table{width:100%;border-collapse:collapse;font-size:12px;min-width:700px}
+.analysis-table th{background:#37474F;color:#FFF;padding:6px 8px;text-align:center;font-size:11px;white-space:nowrap;font-weight:600;vertical-align:middle}
+.analysis-table td{padding:7px 8px;text-align:center;border-bottom:1px solid #ECEFF1;white-space:nowrap;vertical-align:middle}
+.analysis-table tr:hover td{background:#F5F5F5}
+.analysis-table tr.top-row td{background:#FFFDE7}
+.analysis-table td.name-cell{text-align:left;font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+.rank-badge{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700}
+.rank-1{background:#FFD700;color:#6D4C00}
+.rank-2{background:#CFD8DC;color:#37474F}
+.rank-3{background:#FFCCBC;color:#BF360C}
+.rank-other{background:#ECEFF1;color:#78909C;font-size:10px}
+.eval-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;white-space:nowrap}
+.eval-top{background:#FFF9C4;color:#E65100;border:1px solid #FFD54F}
+.eval-good{background:#E8F5E9;color:#2E7D32;border:1px solid #A5D6A7}
+.eval-caution{background:#FFF3E0;color:#E65100;border:1px solid #FFCC80}
+.eval-low{background:#FFEBEE;color:#C62828;border:1px solid #FFCDD2}
+.eval-normal{background:#F5F5F5;color:#607D8B;border:1px solid #CFD8DC}
+.pct-hi{color:#1B5E20;font-weight:700}
+.pct-md{color:#E65100;font-weight:600}
+.pct-lo{color:#C62828;font-weight:700}
+.money-cell{font-weight:600;color:#1B5E20}
+.analysis-subtitle{font-size:11px;color:#90A4AE;margin-bottom:10px}
+/* 営業タイプバッジ */
+.type-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;margin-bottom:2px}
+.type-hunter{background:#E3F2FD;color:#0D47A1;border:1px solid #90CAF9}
+.type-pitcher{background:#F3E5F5;color:#6A1B9A;border:1px solid #CE93D8}
+.type-closer{background:#FFF3E0;color:#BF360C;border:1px solid #FFCC80}
+.type-stable{background:#E8F5E9;color:#1B5E20;border:1px solid #A5D6A7}
+.type-normal{background:#F5F5F5;color:#546E7A;border:1px solid #CFD8DC}
+.type-low{background:#FFEBEE;color:#B71C1C;border:1px solid #FFCDD2}
+.type-comment{font-size:10px;color:#78909C;display:block;white-space:normal;max-width:120px;line-height:1.3;margin-top:2px}
+/* KPI逆算セクション */
+.goal-wrap{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.goal-input-area{background:#F8F9FA;border:1px solid #E0E0E0;border-radius:8px;padding:14px 20px;min-width:280px}
+.goal-input-area label{font-size:13px;color:#546E7A;display:block;margin-bottom:8px}
+.goal-input-area input[type=number]{width:90px;padding:6px 10px;font-size:16px;font-weight:700;border:2px solid #90A4AE;border-radius:6px;text-align:right;outline:none}
+.goal-input-area input[type=number]:focus{border-color:#1976D2}
+.goal-result-grid{display:flex;flex-wrap:wrap;gap:10px;flex:1;min-width:300px}
+.goal-card{background:#FFF;border:1px solid #E0E0E0;border-radius:8px;padding:10px 16px;min-width:120px;text-align:center}
+.goal-card .g-label{font-size:10px;color:#90A4AE;margin-bottom:4px}
+.goal-card .g-value{font-size:22px;font-weight:700;color:#1565C0}
+.goal-card .g-unit{font-size:11px;color:#90A4AE}
+.goal-card.g-warn .g-value{color:#E65100}
+.goal-card.g-ok .g-value{color:#2E7D32}
+.goal-note{font-size:11px;color:#90A4AE;margin-top:8px;width:100%}
+/* KPI目標達成度 */
+.tgt-wrap{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.tgt-cards{display:flex;gap:10px;flex-wrap:wrap}
+.tgt-card{background:#F8F9FA;border:1px solid #E0E0E0;border-radius:8px;padding:10px 16px;min-width:110px;text-align:center}
+.tgt-card.done{background:#E8F5E9;border-color:#A5D6A7}
+.tgt-card.warn{background:#FFEBEE;border-color:#FFCDD2}
+.tgt-card.mid{background:#FFF9C4;border-color:#FFD54F}
+.tgt-card .tc-label{font-size:11px;color:#78909C;margin-bottom:4px}
+.tgt-card .tc-cur{font-size:22px;font-weight:700;color:#1A73E8}
+.tgt-card.done .tc-cur{color:#2E7D32}
+.tgt-card.warn .tc-cur{color:#C62828}
+.tgt-card .tc-goal{font-size:10px;color:#90A4AE;margin-top:2px}
+.tgt-card .tc-gap{font-size:11px;font-weight:700;margin-top:4px;padding:1px 7px;border-radius:8px;display:inline-block}
+.tgt-card.done .tc-gap{background:#C8E6C9;color:#1B5E20}
+.tgt-card.warn .tc-gap{background:#FFCDD2;color:#C62828}
+.tgt-card.mid  .tc-gap{background:#FFF176;color:#E65100}
+.tgt-calc{flex:1;min-width:220px;background:#E8F0FE;border-radius:8px;padding:12px 16px;font-size:12px;line-height:2}
+.tgt-calc .tc-title{font-weight:700;font-size:13px;color:#0D47A1;margin-bottom:4px}
+.tgt-calc .tc-line{color:#1A73E8}
+.tgt-calc .tc-line.no-data{color:#90A4AE}
+/* 次アクションバー */
+.na-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:2px 0}
+.na-title{font-size:12px;font-weight:700;color:#E65100;flex-shrink:0;margin-right:2px}
+.na-item{display:inline-flex;align-items:center;gap:5px;background:#FFF8E1;
+  border:1px solid #FFD54F;border-radius:12px;padding:4px 12px;font-size:12px;
+  color:#4E342E;line-height:1.4}
+.na-item.ok{background:#F1F8E9;border-color:#A5D6A7;color:#1B5E20}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <span>データを読み込み中...</span>
+</div>
+
+<div id="errorBox">
+  <h2 id="errTitle">エラー</h2>
+  <p id="errMsg" style="margin-bottom:8px;font-size:13px"></p>
+  <pre id="errDetail"></pre>
+</div>
+
+<div id="app">
+  <header>
+    <h1>営業KPIダッシュボード<span style="font-size:10px;background:#FFF3E0;color:#E65100;border:1px solid #FFCC80;border-radius:4px;padding:2px 8px;margin-left:8px;font-weight:600;vertical-align:middle">🔵 デモ環境</span></h1>
+    <div class="header-right">
+      <label for="monthSel">表示月：</label>
+      <select id="monthSel" onchange="onMonthChange()"></select>
+      <span id="lastUpdate" style="font-size:11px;opacity:.75"></span>
+    </div>
+  </header>
+
+  <!-- ① KPIサマリー（最重要・最上部） -->
+  <div class="section">
+    <h2>📊 KPIサマリー</h2>
+    <div id="kpiCards"></div>
+  </div>
+
+  <!-- ①' 次アクション（KPIサマリー直下） -->
+  <div class="section" style="padding:12px 20px">
+    <div id="nextActionBar" class="na-bar">
+      <span style="font-size:12px;color:#999">読み込み中...</span>
+    </div>
+  </div>
+
+  <!-- ② 考察・アクション提案（KPIの次に確認） -->
+  <div class="section">
+    <h2>💡 考察とアクション提案</h2>
+    <div id="insightSection"></div>
+  </div>
+
+  <!-- ②' KPI逆算（目標粗利から必要行動数を算出） -->
+  <div class="section">
+    <h2>🧮 KPI逆算（目標から必要行動数を算出）</h2>
+    <div class="goal-wrap">
+      <div class="goal-input-area">
+        <label>今月の目標粗利（万円）</label>
+        <input type="number" id="goalArari" placeholder="例：150" min="0" step="1" oninput="onGoalInput()">
+        <div style="font-size:11px;color:#90A4AE;margin-top:6px">入力すると必要な活動数を自動計算します</div>
+      </div>
+      <div class="goal-result-grid" id="goalResult">
+        <div class="goal-card" style="border-style:dashed">
+          <div class="g-label">目標入力待ち</div>
+          <div class="g-value" style="font-size:14px;color:#B0BEC5">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③' KPI目標達成度（件数ベース） -->
+  <div class="section">
+    <h2>🎯 KPI目標達成度（残り件数）</h2>
+    <div id="kpiTargetSection"></div>
+  </div>
+
+  <!-- ③ 担当者別（メンバー評価） -->
+  <div class="section">
+    <h2>👤 担当者別パフォーマンス</h2>
+    <div class="analysis-wrap" id="tantoSection"></div>
+  </div>
+
+  <!-- ④ 上位会社別（取引先評価） -->
+  <div class="section">
+    <h2>🏢 上位会社別分析</h2>
+    <div class="analysis-wrap" id="companySection"></div>
+  </div>
+
+  <!-- ⑤ 営業ファネル（転換率の詳細） -->
+  <div class="section">
+    <h2>🔽 営業ファネル（転換率）</h2>
+    <div id="funnelWrap"></div>
+  </div>
+
+  <!-- ⑥ 前月比較テーブル（数値詳細） -->
+  <div class="section">
+    <h2>📈 前月比較（指標詳細）</h2>
+    <table id="compTable"><thead><tr>
+      <th>指標</th><th id="compCurHead">当月</th><th id="compPrvHead">前月</th><th>増減</th>
+    </tr></thead><tbody id="compBody"></tbody></table>
+  </div>
+
+  <!-- ⑦ 稼働明細（当月アクティブ契約） -->
+  <div class="section">
+    <h2>📄 稼働明細（当月稼働契約）</h2>
+    <div class="table-wrap">
+      <table id="contractTable">
+        <thead><tr>
+          <th>営業対象月</th><th>人材名</th><th>案件名</th>
+          <th>契約期間</th>
+          <th>月額単価</th><th>月額粗利</th>
+          <th>自動稼働率</th><th>確定稼働率</th><th>実効稼働率</th>
+          <th style="background:#2E7D32">月次売上</th><th style="background:#2E7D32">月次粗利</th>
+        </tr></thead>
+        <tbody id="contractBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ⑧ 案件一覧（紹介日ベース・詳細データ） -->
+  <div class="section">
+    <h2>📋 案件一覧（紹介日ベース）</h2>
+    <div class="table-wrap">
+      <table id="dataTable">
+        <thead><tr>
+          <th>紹介日</th><th>担当者</th><th>上位会社</th><th>案件名</th><th>人材名</th>
+          <th>仕入先</th><th>人材返信</th><th>案件提案</th><th>書類</th>
+          <th>1次面談</th><th>参画</th><th>参画日</th><th>売上</th>
+        </tr></thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ★ 設定（ここを変更してください）
+const CONFIG = {
+  SPREADSHEET_ID    : '1otETefpS6_tTfOevbs5KC_ZjJr28VwHnZFnj4oV_gIA',  // スプレッドシートID
+  SALES_SHEET_NAME  : '人材提案',   // 営業管理シート名（KPI用）
+  CONTRACT_SHEET_NAME: '契約管理',  // 契約管理シート名（売上・粗利用）
+};
+
+let allRows      = [];   // 営業管理シート（KPI用）
+let contractRows = [];   // 契約管理シート（売上・粗利用）
+let allMonths    = [];
+
+// ---------- データ取得 ----------
+
+async function fetchSheetData(spreadsheetId, sheetName) {
+  // JSONP 方式で Google Visualization API を呼び出す。
+  // fetch() は file:// から gviz へ CORS でブロックされるが、
+  // <script> タグ注入（JSONP）は CORS の制約を受けない。
+  const gviz = await new Promise((resolve, reject) => {
+    const cb = '_gviz_' + Date.now();
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('タイムアウト: Googleスプレッドシートへの接続がタイムアウトしました（共有設定を確認してください）'));
+    }, 15000);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      delete window[cb];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    window[cb] = data => { cleanup(); resolve(data); };
+
+    const script = document.createElement('script');
+    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq` +
+      `?tqx=out:json;responseHandler:${cb}&sheet=${encodeURIComponent(sheetName)}`;
+    console.log('[fetchSheetData] JSONP URL:', url);
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('スクリプト読み込みエラー: スプレッドシートのIDまたは共有設定を確認してください'));
+    };
+    script.src = url;
+    document.head.appendChild(script);
+  });
+
+  if (gviz.status === 'error') {
+    const msg = (gviz.errors || []).map(e => e.detailed_message || e.message).join('; ');
+    throw new Error('Googleスプレッドシートエラー: ' + msg);
+  }
+
+  // 列名（label を優先）
+  const cols = (gviz.table?.cols || []).map(c => String(c.label || c.id || '').trim());
+  console.log('[fetchSheetData] columns:', cols);
+
+  // セル値取得
+  // gviz の日付セル: v="Date(2026,2,1)"（月は0起算）、f=書式付き文字列
+  // 【修正】v が Date() 形式の場合は f（和暦/短縮形式など）より v を優先して変換。
+  // これにより「令和8年3月1日」「26/3/1」など parseDateSafe が読めない書式でも正しく解析できる。
+  const cellVal = cell => {
+    if (!cell) return '';
+    // v が gviz Date 形式なら YYYY/MM/DD に変換して返す（f より優先）
+    const vRaw = (cell.v !== null && cell.v !== undefined) ? String(cell.v) : '';
+    const dm = vRaw.match(/^Date\((\d+),(\d+),(\d+)\)/);
+    if (dm) {
+      const y = dm[1], m = String(+dm[2] + 1).padStart(2,'0'), d = String(dm[3]).padStart(2,'0');
+      return `${y}/${m}/${d}`;
+    }
+    // 非日付セル: f（書式付き値）を優先
+    if (cell.f !== null && cell.f !== undefined && cell.f !== '') return String(cell.f);
+    if (!vRaw) return '';
+    return vRaw;
+  };
+
+  const rows = (gviz.table?.rows || [])
+    .map(row => {
+      const obj = {};
+      (row.c || []).forEach((cell, i) => {
+        const key = cols[i];
+        if (key) obj[key] = cellVal(cell);
+      });
+      return obj;
+    })
+    .filter(row => Object.values(row).some(v => v !== ''));
+
+  console.log('[fetchSheetData] rows:', rows.length, rows[0] || '(empty)');
+  return rows;
+}
+
+// ---------- 日付ユーティリティ ----------
+
+function parseDateSafe(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const s = String(val).trim();
+  if (!s) return null;
+
+  // Excel シリアル値（数値文字列）
+  if (/^\d{4,6}$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n > 59) { // Excel 1900年バグ対応
+      const d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+      if (d.getUTCFullYear() >= 1990 && d.getUTCFullYear() <= 2100) return d;
+    }
+    return null;
+  }
+
+  // gviz Date() 形式: Date(2026,2,1)（月は 0 起算）
+  const gvizM = s.match(/^Date\((\d+),(\d+),(\d+)\)/);
+  if (gvizM) {
+    const yr = +gvizM[1], mo = +gvizM[2], dy = +gvizM[3];
+    if (yr < 1990 || yr > 2100) return null;
+    return new Date(yr, mo, dy); // 月はすでに 0 起算
+  }
+
+  // 【修正】YYYY年M月D日（日本語形式） ← gviz の日本語ロケール対応
+  const jpM = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日?/);
+  if (jpM) {
+    const yr = +jpM[1], mo = +jpM[2] - 1, dy = +jpM[3];
+    if (yr < 1990 || yr > 2100) return null;
+    return new Date(yr, mo, dy);
+  }
+
+  // YYYY/MM/DD or YYYY-MM-DD
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) {
+    const yr = parseInt(m[1]), mo = parseInt(m[2]) - 1, dy = parseInt(m[3]);
+    if (yr < 1990 || yr > 2100) return null;
+    return new Date(yr, mo, dy);
+  }
+  return null;
+}
+
+function formatDate(val) {
+  const d = parseDateSafe(val);
+  if (!d) return '';
+  const yr = d.getUTCFullYear ? d.getUTCFullYear() : d.getFullYear();
+  const mo = d.getUTCMonth    ? d.getUTCMonth() + 1 : d.getMonth() + 1;
+  const dy = d.getUTCDate     ? d.getUTCDate()       : d.getDate();
+  const y = isNaN(yr) ? d.getFullYear() : yr;
+  const mm = String(d instanceof Date && d.getUTCFullYear ? mo : d.getMonth()+1).padStart(2,'0');
+  const dd = String(d instanceof Date && d.getUTCFullYear ? dy : d.getDate()).padStart(2,'0');
+  // シンプルに再計算
+  const y2 = d.getFullYear ? d.getFullYear() : yr;
+  const m2 = String((d.getMonth ? d.getMonth() : mo-1) + 1).padStart(2,'0');
+  const d2 = String(d.getDate ? d.getDate() : dy).padStart(2,'0');
+  return `${y2}/${m2}/${d2}`;
+}
+
+// YYYY-MM 形式で返す（option value / filterByMonth 比較に使用）
+// 表示用は YYYY/MM（select の innerHTML で変換）
+// ★ 対象月セルは "2026/03" や "2026-03" のように日なしで入力されることを許容
+function toMonth(dateVal) {
+  if (dateVal === null || dateVal === undefined || dateVal === '') return '';
+  const s = String(dateVal).trim();
+
+  // YYYY/MM または YYYY-MM（日なし）形式を直接パース
+  const mmOnly = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
+  if (mmOnly) {
+    const y = +mmOnly[1], m = +mmOnly[2];
+    if (y >= 1990 && y <= 2100 && m >= 1 && m <= 12)
+      return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  // YYYY年M月（日なし）— スプレッドシートの日本語表記に対応
+  const jpMM = s.match(/^(\d{4})年(\d{1,2})月$/);
+  if (jpMM) {
+    const y = +jpMM[1], m = +jpMM[2];
+    if (y >= 1990 && y <= 2100 && m >= 1 && m <= 12)
+      return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  // それ以外は日付として解析
+  const d = parseDateSafe(dateVal);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  if (y < 1990 || y > 2100) return '';
+  return `${y}-${m}`;
+}
+
+// 営業対象月などの「月」セルを YYYY-MM 文字列に正規化する
+// toMonth は parseDateSafe 経由で動くが、gviz が数値シリアルを返すケースや
+// Date 型オブジェクトを直接渡される場合に対応するための専用関数
+function normalizeMonthValue(v) {
+  if (v === null || v === undefined || v === '') return '';
+
+  // JS Date オブジェクト（gviz ライブラリが変換済みで渡すケース）
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    if (y < 1990 || y > 2100) return '';
+    return `${y}-${m}`;
+  }
+
+  const s = String(v).trim();
+  if (!s) return '';
+
+  // gviz Date() 文字列: Date(2026,2,1)（月は 0 起算）
+  const gvizM = s.match(/^Date\((\d+),(\d+),(\d+)\)/);
+  if (gvizM) {
+    const y = +gvizM[1], m = +gvizM[2] + 1;   // 0 起算 → 1 起算に変換
+    if (y < 1990 || y > 2100 || m < 1 || m > 12) return '';
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  // Excel シリアル値（数値文字列）
+  if (/^\d{4,6}$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n > 59) {
+      const d = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+      const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+      if (y >= 1990 && y <= 2100) return `${y}-${String(m).padStart(2, '0')}`;
+    }
+    return '';
+  }
+
+  // 日本語形式: 2026年3月 / 2026年3月1日
+  const jpM = s.match(/^(\d{4})年\s*(\d{1,2})月/);
+  if (jpM) {
+    const y = +jpM[1], m = +jpM[2];
+    if (y < 1990 || y > 2100 || m < 1 || m > 12) return '';
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  // YYYY-MM / YYYY/MM（日付なし）または YYYY-MM-DD / YYYY/MM/DD（日付あり → 月だけ取る）
+  const dashM = s.match(/^(\d{4})[\/\-](\d{1,2})(?:[\/\-]\d+)?$/);
+  if (dashM) {
+    const y = +dashM[1], m = +dashM[2];
+    if (y < 1990 || y > 2100 || m < 1 || m > 12) return '';
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  return '';
+}
+
+// ---------- カラムマッパー ----------
+
+function normalizeKey(k) {
+  // 前後・内部の空白・全角スペース・改行をすべて除去
+  return String(k).replace(/[\s\u3000\r\n]+/g, '').trim();
+}
+
+function buildColumnMapper(sampleRow) {
+  console.log('[buildColumnMapper] raw keys:', Object.keys(sampleRow));
+  const keys = Object.keys(sampleRow).map(k => ({ raw: k, norm: normalizeKey(k) }));
+  console.log('[buildColumnMapper] normalized keys:', keys.map(k => k.norm));
+
+  // 全列名をデバッグ出力（実際の列名確認用）
+  console.log('[mapper] 全正規化列名一覧:', keys.map(k => `"${k.norm}"`).join(' | '));
+
+  const patterns = [
+    ['intro_date',      n => n.includes('紹介日')],
+    ['tanto',           n => n === '担当者' || n.includes('担当者')],
+    ['company',         n => n === '上位会社' || n.includes('上位会社')],
+    ['anken',           n => n === '案件名' || n.includes('案件名')],
+    ['teian_kin',       n => n.includes('提案金額')],
+    ['jinzai',          n => n === '人材名' || n.includes('人材名')],
+    ['shiire',          n => n === '仕入先' || n.includes('仕入先')],
+    ['shiire_kin',      n => n.includes('仕入') && n.includes('金額')],
+    ['nin_hensin',      n => n.includes('人材側') && n.includes('返信')],
+    ['nin_hensin_date', n => n.includes('人材側') && n.includes('返信日')],
+    ['ank_teian',       n => n.includes('案件側') && n.includes('提案')],
+    ['ank_teian_date',  n => n.includes('提案日') && !n.includes('紹介')],
+    ['ank_hensin',      n => n.includes('案件側') && n.includes('返信') && !n.includes('提案')],
+    ['ank_hensin_date', n => n.includes('案件側') && n.includes('返信日')],
+    ['shorui',          n => n.includes('書類選考') || n.includes('書類')],
+    // 1次面談: 半角・全角どちらも対応
+    ['mendan1_date',    n => n.includes('1次面談日') || n.includes('１次面談日') ||
+                             (n.includes('面談') && n.includes('日') &&
+                              !n.includes('2') && !n.includes('２') && !n.includes('結果'))],
+    ['mendan1_res',     n => n.includes('1次面談結果') || n.includes('１次面談結果') ||
+                             (n.includes('面談') && n.includes('結果') &&
+                              !n.includes('2') && !n.includes('２'))],
+    ['mendan2_date',    n => n.includes('2次面談日') || n.includes('２次面談日') ||
+                             (n.includes('面談') && n.includes('日') &&
+                              (n.includes('2') || n.includes('２')))],
+    ['mendan2_res',     n => n.includes('2次面談結果') || n.includes('２次面談結果')],
+    ['ishi_ok',         n => n.includes('意思')],
+    // 参画日を先に捕捉し、参画フラグと混同しない
+    ['sanka_date',      n => n.includes('参画日') ||
+                             (n.includes('参画') && n.includes('日'))],
+    // 参画フラグ: 参画日を除外、あらゆる表記に対応
+    ['sanka',           n => n.includes('参画') && !n.includes('日')],
+  ];
+
+  const mapper = {};
+  for (const [field, test] of patterns) {
+    const found = keys.find(k => test(k.norm));
+    if (found) {
+      mapper[field] = found.raw;
+      console.log(`[mapper] ${field} => "${found.raw}" (norm: "${normalizeKey(found.raw)}")`);
+    } else {
+      console.warn(`[mapper] ${field} => NOT FOUND`);
+    }
+  }
+  // 重点デバッグ: 1次面談日・参画の認識キーを明示
+  console.log('[mapper] ★1次面談日キー:', mapper.mendan1_date ?? '未検出');
+  console.log('[mapper] ★参画フラグキー:', mapper.sanka      ?? '未検出');
+  console.log('[mapper] ★参画日キー:    ', mapper.sanka_date  ?? '未検出');
+
+  // 【新規】売上・粗利計算に必要な列が存在しない場合は警告
+  const REVENUE_FIELDS = { teian_kin: '提案金額（売上）', shiire_kin: '仕入れ金額（粗利）' };
+  Object.entries(REVENUE_FIELDS).forEach(([f, label]) => {
+    if (!mapper[f]) console.warn(`[mapper] ⚠️ 売上/粗利計算に必要な列「${label}」が見つかりません`);
+  });
+
+  return mapper;
+}
+
+function normalizeRow(raw, mapper) {
+  const get = field => mapper[field] !== undefined ? raw[mapper[field]] ?? '' : '';
+  return {
+    intro_date      : get('intro_date'),
+    intro_month     : toMonth(get('intro_date')),    // 紹介日ベース月キー
+    tanto           : get('tanto'),
+    company         : get('company'),
+    anken           : get('anken'),
+    jinzai          : get('jinzai'),
+    shiire          : get('shiire'),
+    nin_hensin      : get('nin_hensin'),
+    ank_teian       : get('ank_teian'),
+    ank_hensin      : get('ank_hensin'),
+    shorui          : get('shorui'),
+    mendan1_date    : get('mendan1_date'),
+    mendan1_res     : get('mendan1_res'),
+    sanka           : get('sanka'),
+    sanka_date      : get('sanka_date'),
+    // 【新規】参画日ベース月キー・売上/粗利原値
+    sanka_month     : toMonth(get('sanka_date')),    // 参画日ベース月キー
+    teian_kin_raw   : get('teian_kin'),              // 売上（提案金額）
+    shiire_kin_raw  : get('shiire_kin'),             // 仕入れ金額（粗利計算用）
+  };
+}
+
+// ---------- 契約管理シート ----------
+
+// 対象月 + 開始日/終了日 から月次稼働率を自動計算（カレンダー日割り）
+// 例: 対象月=2026-03, 開始日=2026/03/15 → 17日/31日 = 0.548
+// start/end が未入力なら 1.0（フルカウント）
+function calcAutoRate(targetMonth, startDateVal, endDateVal) {
+  if (!targetMonth) return 1.0;
+  const parts = targetMonth.split('-').map(Number);
+  if (parts.length < 2 || !parts[0] || !parts[1]) return 1.0;
+  const [y, m] = parts;
+
+  const monthFirst = new Date(y, m - 1, 1);         // 対象月初日
+  const monthLast  = new Date(y, m, 0);              // 対象月末日
+  const totalDays  = monthLast.getDate();
+
+  const sd = parseDateSafe(startDateVal);
+  const ed = parseDateSafe(endDateVal);
+
+  // 有効開始: start が月内なら start、それ以外は月初
+  const effStart = (sd && sd > monthFirst) ? sd : monthFirst;
+  // 有効終了: end が月内なら end、それ以外は月末
+  const effEnd   = (ed && ed < monthLast)  ? ed : monthLast;
+
+  if (effStart > effEnd) return 0;  // 対象月と期間が重複しない
+
+  const coveredDays = Math.round((effEnd - effStart) / 86400000) + 1;
+  return Math.round(coveredDays / totalDays * 1000) / 1000;  // 小数3桁
+}
+
+// 契約管理シートの列マッパー
+// 対応列: 人材名/案件名/営業対象月/契約開始日/契約終了日/
+//         月額売上単価/仕入れ単価/月額粗利/粗利率/
+//         自動稼働率/確定稼働率/契約区分/稼働フラグ
+function buildContractMapper(sampleRow) {
+  const keys = Object.keys(sampleRow).map(k => ({ raw: k, norm: normalizeKey(k) }));
+  console.log('[buildContractMapper] columns:', keys.map(k => k.norm));
+
+  const patterns = [
+    // 基本情報
+    ['name',         n => n.includes('人材名')],
+    ['anken',        n => n.includes('案件名')],
+    // 営業対象月（KPI帰属月。売上判定には使わない）
+    ['target_month', n => n.includes('営業対象月') || n === '対象月'],
+    // 契約期間（売上・粗利の発生期間）
+    ['start_date',   n => n.includes('契約開始日') || n.includes('開始日')],
+    ['end_date',     n => n.includes('契約終了日') || n.includes('終了日')],
+    // 単価
+    ['tanka_uriage', n => n.includes('月額売上単価') || n.includes('月額売上') ||
+                          (n.includes('売上') && n.includes('単価'))],
+    ['shiire_tanka', n => n.includes('仕入れ単価') || n.includes('仕入単価') ||
+                          (n.includes('仕入') && n.includes('単価'))],
+    ['tanka_arari',  n => n.includes('月額粗利') ||
+                          (n.includes('粗利') && !n.includes('率') && !n.includes('累積'))],
+    ['arari_rate',   n => n.includes('粗利率')],
+    // 稼働率（シート列。確定稼働率 > 自動稼働率 > calcAutoRate の優先順）
+    ['rate_auto_col',n => n.includes('自動稼働率')],
+    ['rate_fixed',   n => n.includes('確定稼働率')],
+    // 区分・フラグ
+    ['keiyaku_type', n => n.includes('契約区分') || n === '区分'],
+    ['active_flag',  n => n.includes('稼働フラグ')],
+  ];
+
+  const mapper = {};
+  for (const [field, test] of patterns) {
+    const found = keys.find(k => !Object.values(mapper).includes(k.raw) && test(k.norm));
+    if (found) {
+      mapper[field] = found.raw;
+      console.log(`[contractMapper] ${field} => "${found.raw}"`);
+    } else {
+      const optional = ['target_month','rate_auto_col','rate_fixed',
+                        'shiire_tanka','keiyaku_type','active_flag','arari_rate'];
+      if (optional.includes(field)) console.log(`[contractMapper] ${field} => (列なし・任意)`);
+      else                          console.warn(`[contractMapper] ${field} => NOT FOUND`);
+    }
+  }
+  return mapper;
+}
+
+// 稼働フラグ判定
+// ○/◯/〇/O/o/true/TRUE/OK/ok/1/有 → 稼働中(true)
+// ×/false/FALSE/NG/0/空欄 → 非稼働(false)
+function isActiveFlag(v) {
+  if (v === null || v === undefined || v === '') return false;
+  const s = String(v).trim();
+  if (s === '') return false;
+  const inactive = ['×', 'x', 'X', 'false', 'False', 'FALSE', 'NG', 'ng', '0', 'no', 'No', 'NO', '無'];
+  if (inactive.includes(s)) return false;
+  const active = ['○', '◯', '〇', 'O', 'o', 'true', 'True', 'TRUE', 'OK', 'ok', '1', 'yes', 'Yes', 'YES', '有', '稼働中'];
+  if (active.includes(s)) return true;
+  return true;  // 上記以外の非空値は稼働中とみなす
+}
+
+// 契約管理行を内部形式に変換
+// ★ 月次売上・粗利はここでは計算しない
+//    → getActiveContracts() で「表示月が契約期間内か」を判定し、そこで計算する
+function normalizeContractRow(raw, mapper) {
+  const get = field => mapper[field] !== undefined ? raw[mapper[field]] ?? '' : '';
+
+  const startDate  = get('start_date');    // 契約開始日
+  const endDate    = get('end_date');      // 契約終了日
+  const start_month = toMonth(startDate); // 契約開始月 YYYY-MM
+  const end_month   = toMonth(endDate);   // 契約終了月 YYYY-MM（空=継続中）
+
+  // 営業対象月（KPI帰属月。売上判定には使わない）
+  // ★ normalizeMonthValue で Date型・シリアル値・日本語形式を一括変換
+  const rawTargetMonth = get('target_month');
+  const sales_month    = normalizeMonthValue(rawTargetMonth);
+
+  // 月額売上単価
+  const tankaU = toNumber(get('tanka_uriage'));
+
+  // 月額粗利：直接列 → 売上-仕入れ → 粗利率×売上 の順で取得
+  const tankaA = (() => {
+    const a = toNumber(get('tanka_arari'));
+    if (a !== null) return a;
+    const shiire = toNumber(get('shiire_tanka'));
+    if (tankaU !== null && shiire !== null) return Math.round((tankaU - shiire) * 10) / 10;
+    const rate = toRate(get('arari_rate'));  // "XX%" → 0.XX
+    if (tankaU !== null && rate !== null) return Math.round(tankaU * rate * 10) / 10;
+    return null;
+  })();
+
+  // 稼働率（確定稼働率 > シート記載の自動稼働率 > calcAutoRate）
+  const rate_fixed   = toRate(get('rate_fixed'));    // 確定稼働率
+  const rate_auto_col = toRate(get('rate_auto_col')); // シート列の自動稼働率（表示用）
+
+  // 稼働フラグ
+  const active_flag_raw = get('active_flag');
+  const is_active = isActiveFlag(active_flag_raw);
+
+  console.log('[contractRow]',
+    `${get('name')} / 開始=${start_month} 終了=${end_month||'継続'} 営業=${sales_month||'—'}`,
+    `| 単価=${tankaU}万 粗利=${tankaA}万`,
+    `| 確定稼働率=${rate_fixed ?? '(空)'} 自動稼働率(シート)=${rate_auto_col ?? '(空)'}`,
+    `| 稼働フラグ="${active_flag_raw}"→${is_active}`);
+
+  return {
+    name          : get('name'),
+    anken         : get('anken'),
+    sales_month,                   // 営業対象月 YYYY-MM（KPI帰属月）
+    rawTargetMonth,                // 営業対象月 生値（デバッグ用）
+    start_date    : startDate,     // 契約開始日（文字列）
+    end_date      : endDate,       // 契約終了日（文字列）
+    start_month,                   // 契約開始月 YYYY-MM
+    end_month,                     // 契約終了月 YYYY-MM（空=継続中）
+    tanka_uriage  : tankaU,        // 月額売上単価（万円）
+    tanka_arari   : tankaA,        // 月額粗利（万円）
+    rate_fixed,                    // 確定稼働率（null=未入力）
+    rate_auto_col,                 // シート記載の自動稼働率（表示参考用）
+    keiyaku_type  : get('keiyaku_type'),  // 契約区分（新規/延長）
+    active_flag   : active_flag_raw,
+    is_active,                     // 稼働フラグ判定結果
+  };
+}
+
+// ---------- 月フィルター ----------
+
+// YYYY-MM 文字列を1ヶ月進める
+function nextMonth(yyyymm) {
+  const [y, m] = yyyymm.split('-').map(Number);
+  if (m === 12) return `${y + 1}-01`;
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+// startM〜endM の全 YYYY-MM を配列で返す（両端含む）
+function monthsBetween(startM, endM) {
+  if (!startM || !endM || startM > endM) return [];
+  const result = [];
+  let cur = startM;
+  while (cur <= endM) {
+    result.push(cur);
+    cur = nextMonth(cur);
+    if (result.length > 300) break; // 安全上限（25年分）
+  }
+  return result;
+}
+
+// 今月の YYYY-MM を返す
+function currentMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// KPI紹介月 + 契約稼働期間の全月 を収集してセレクタ用月リストを生成
+function buildMonthOptions(kpiRows, cRows) {
+  const months = new Set();
+  // 営業管理シートの紹介月
+  kpiRows.forEach(r => { if (r.intro_month) months.add(r.intro_month); });
+  // 契約管理: 契約開始月〜終了月（または今月）の全月
+  const todayM = currentMonth();
+  (cRows || []).forEach(r => {
+    const startM = r.start_month;
+    const endM   = r.end_month || todayM;
+    if (startM) monthsBetween(startM, endM).forEach(m => months.add(m));
+  });
+  return [...months].sort((a, b) => b.localeCompare(a));
+}
+
+// KPI行を紹介月でフィルタ
+function filterByMonth(rows, month, dateField = 'intro_month') {
+  if (!month || month === 'all') return rows;
+  return rows.filter(r => r[dateField] === month);
+}
+
+// ─── 稼働中判定（共通ロジック）───────────────────────────────────────
+// 稼働明細・担当者別・上位会社別で同じ判定を使うための単体関数
+// 判定条件:
+//   ① 稼働フラグが有効（isActiveFlag = true）
+//   ② 契約開始日 ≤ 表示月の月末
+//   ③ 契約終了日 ≥ 表示月の月初（終了日なし = 継続中 は常に含む）
+// ★ 営業対象月(sales_month)・契約区分は一切参照しない
+function isActiveInMonth(r, month) {
+  if (!month || month === 'all') return false;
+  if (!r.is_active) return false;
+  const parts = month.split('-');
+  const y = +parts[0], m = +parts[1];
+  const monthStart = new Date(y, m - 1, 1);
+  const monthEnd   = new Date(y, m, 0, 23, 59, 59);
+  const sd = parseDateSafe(r.start_date);
+  if (!sd || sd > monthEnd) return false;
+  const ed = parseDateSafe(r.end_date);
+  if (ed && ed < monthStart) return false;
+  return true;
+}
+
+// 指定月に稼働中の契約行を取得し、その月の月次売上・粗利を計算して返す
+// ★ isActiveInMonth を使って判定する（稼働明細・担当者別・上位会社別で共通）
+// 全期間('all')の場合は月次集計は意味がないので [] を返す
+function getActiveContracts(cRows, month) {
+  if (!month || month === 'all') return [];
+  return (cRows || []).flatMap(r => {
+    if (!isActiveInMonth(r, month)) return [];
+    // その月の稼働率を計算（確定稼働率 > 日割り自動計算）
+    const rateAuto = calcAutoRate(month, r.start_date, r.end_date);
+    const rateEff  = r.rate_fixed !== null ? r.rate_fixed : rateAuto;
+    const monthly_uriage = r.tanka_uriage !== null
+      ? Math.round(r.tanka_uriage * rateEff * 10) / 10 : null;
+    const monthly_arari  = r.tanka_arari  !== null
+      ? Math.round(r.tanka_arari  * rateEff * 10) / 10 : null;
+    return [{ ...r, disp_month: month, rate_auto: rateAuto, rate_eff: rateEff,
+              monthly_uriage, monthly_arari }];
+  });
+}
+
+// ─── 新規契約（営業成果）を取得 ───────────────────────────────────────
+// isActiveInMonth とは完全に独立。「稼働開始前でも営業対象月が一致すれば含める」
+//
+// 判定条件:
+//   ① 契約区分（keiyaku_type）に '新規' を含む
+//   ② 営業対象月（sales_month）=== displayMonth
+//   ※ 契約開始日・稼働フラグは参照しない
+//
+// 売上計算:
+//   確定稼働率 があればそれを使用、なければ 1.0（フルタイム換算）
+//   → 「この月に成約した案件の月額契約価値」として KPI に表示する
+function getNewContracts(cRows, month) {
+  if (!month || month === 'all') return [];
+  const result = [];
+  (cRows || []).forEach(r => {
+    const kbn = String(r.keiyaku_type || '').trim();
+    const isNew    = kbn.includes('新規');
+    const isTarget = r.sales_month === month;
+    // ★ デバッグ: 営業対象月・契約区分の判定確認
+    console.log('[getNewContracts]',
+      'displayMonth:', month,
+      '| 営業対象月 raw:', r.rawTargetMonth, '→', r.sales_month,
+      '| 契約区分:', kbn,
+      '| 新規判定:', isNew, '| 月一致:', isTarget, '| → 採用:', isNew && isTarget);
+    if (!isNew || !isTarget) return;
+    const rateEff = r.rate_fixed !== null ? r.rate_fixed : 1.0;
+    const monthly_uriage = r.tanka_uriage !== null
+      ? Math.round(r.tanka_uriage * rateEff * 10) / 10 : null;
+    const monthly_arari  = r.tanka_arari  !== null
+      ? Math.round(r.tanka_arari  * rateEff * 10) / 10 : null;
+    result.push({ ...r, disp_month: month, rate_eff: rateEff, monthly_uriage, monthly_arari });
+  });
+  console.log('[getNewContracts] 結果:', result.length, '件 | 対象月:', month);
+  return result;
+}
+
+// ---------- ユーティリティ関数 ----------
+
+// getMonthKey: 日付値から YYYY-MM 文字列を返す（toMonth のエイリアス）
+function getMonthKey(dateVal) { return toMonth(dateVal); }
+
+// toNumber: 各種表記を数値に統一変換
+//   "60万円" → 60  /  "8.3%" → 8.3  /  "¥1,000" → 1000  /  "" → null
+function toNumber(val) {
+  if (val === null || val === undefined || val === '') return null;
+  let s = String(val).replace(/[\s,]/g, '').trim();
+  const manM = s.match(/^([\d.]+)万円?$/);
+  if (manM) return parseFloat(manM[1]);
+  if (s.endsWith('%')) return parseFloat(s.slice(0, -1));
+  s = s.replace(/^[¥￥]/, '').replace(/円$/, '');
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+// 稼働率専用変換
+// "50%" → 0.5（% 付きのみ ÷100）
+// "0.5" → 0.5 / "1.0" → 1.0 / "3.0" → 3.0（人月数として扱う）
+// ★ 整数 > 1 を自動で ÷100 しない（3.0人月 = 3倍売上 が正しい）
+function toRate(val) {
+  if (val === null || val === undefined || val === '') return null;
+  let s = String(val).replace(/[\s,]/g, '').trim();
+  if (s.endsWith('%')) {
+    const n = parseFloat(s.slice(0, -1));
+    return isNaN(n) ? null : Math.round(n / 100 * 10000) / 10000;  // "50%" → 0.5
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;  // "0.5"→0.5, "3.0"→3.0（人月数のまま保持）
+}
+
+// 月次売上・粗利を集計（getActiveContracts 済みの行を受け取る）
+// normalizeContractRow で monthly_uriage/monthly_arari は計算済み
+function calculateRevenueMetrics(cRows) {
+  cRows = cRows || [];
+  let uriage = 0, arari = 0, missingU = 0, missingA = 0;
+  cRows.forEach(r => {
+    if (r.monthly_uriage !== null) { uriage += r.monthly_uriage; } else { missingU++; }
+    if (r.monthly_arari  !== null) { arari  += r.monthly_arari;  } else { missingA++; }
+  });
+  console.log('[calculateRevenueMetrics]',
+    '稼働件数:', cRows.length,
+    '| 月次売上:', Math.round(uriage * 10) / 10, '万円',
+    '| 月次粗利:', Math.round(arari  * 10) / 10, '万円',
+    '| 未入力:', missingU, '件');
+  return {
+    sanka  : cRows.length,
+    uriage : cRows.length === 0 ? null : Math.round(uriage * 10) / 10,
+    arari  : cRows.length === 0 ? null : Math.round(arari  * 10) / 10,
+    arariPerSanka : cRows.length > 0 && arari > 0
+                    ? Math.round(arari / cRows.length * 10) / 10 : null,
+  };
+}
+
+// 累積売上・粗利（開始〜upToMonth までの全月分を合算）
+// 各契約の 契約開始月〜min(契約終了月, upToMonth) を月ごとに積算する
+// 稼働フラグ OFF の行はスキップ
+function calculateCumulativeRevenue(cRows, upToMonth) {
+  cRows = cRows || [];
+  const isAll    = !upToMonth || upToMonth === 'all';
+  const capMonth = isAll ? currentMonth() : upToMonth;
+
+  let totalU = 0, totalA = 0, counted = 0;
+
+  (cRows || []).forEach(r => {
+    if (!r.is_active) return;
+    if (!r.start_month) return;
+    const contractEndM = r.end_month || capMonth;            // 継続中は今月で打ち切り
+    const endM = contractEndM < capMonth ? contractEndM : capMonth;
+    if (r.start_month > endM) return;                        // 開始前
+    monthsBetween(r.start_month, endM).forEach(month => {
+      const rateAuto = calcAutoRate(month, r.start_date, r.end_date);
+      const rateEff  = r.rate_fixed !== null ? r.rate_fixed : rateAuto;
+      if (r.tanka_uriage !== null) {
+        totalU += Math.round(r.tanka_uriage * rateEff * 10) / 10;
+        counted++;
+      }
+      if (r.tanka_arari !== null) {
+        totalA += Math.round(r.tanka_arari * rateEff * 10) / 10;
+      }
+    });
+  });
+
+  console.log('[calculateCumulativeRevenue]',
+    `〜${capMonth}`,
+    '| 累積売上:', Math.round(totalU * 10) / 10, '万円',
+    '| 累積粗利:', Math.round(totalA * 10) / 10, '万円',
+    '| 計上月数:', counted);
+
+  return {
+    uriage : counted === 0 ? null : Math.round(totalU * 10) / 10,
+    arari  : counted === 0 ? null : Math.round(totalA * 10) / 10,
+  };
+}
+
+// groupByMonth: 月ごとに行をグルーピング（月不明は除外）
+function groupByMonth(rows, monthField = 'intro_month') {
+  return rows.reduce((acc, r) => {
+    const key = r[monthField];
+    if (!key) return acc;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(r);
+    return acc;
+  }, {});
+}
+
+// ---------- KPI計算 ----------
+
+// ○ ◯ 〇 O o OK ok → true
+const isMaru = v => {
+  const s = String(v ?? '').trim().replace(/\r?\n/g, '');
+  return ['○', '◯', '〇', 'O', 'o', 'OK', 'ok'].includes(s);
+};
+// 通過 ○ O o → true（書類選考列）
+const isTsuka = v => {
+  const s = String(v ?? '').trim().replace(/\r?\n/g, '');
+  return ['通過', '○', '◯', '〇', 'O', 'o'].includes(s);
+};
+const safePct = (n, d) => d > 0 ? Math.round(n / d * 1000) / 10 : null;
+
+// rows        : 人材提案シート行（intro_month フィルタ済）— 紹介〜面談系 KPI に使用
+// displayMonth: 'YYYY-MM' | 'all' | undefined
+// cRows       : 契約管理シートの全行 — 参画数を「営業対象月」ベースで集計するために使用
+//
+// ★ KPI 分離ルール
+//   ・紹介数〜面談数   → intro_month フィルタ後の rows を使う
+//   ・参画数          → 契約管理の sales_month（営業対象月）=== displayMonth で集計
+//     理由: 3月成約・4月開始でも「3月の営業成果」として正しく計上するため
+function calculateKpis(rows, displayMonth, cRows) {
+  const total     = rows.length;
+  const ninHensin = rows.filter(r => isMaru(r.nin_hensin)).length;
+  const ankTeian  = rows.filter(r => isMaru(r.ank_teian)).length;
+  const ankHensin = rows.filter(r => isMaru(r.ank_hensin)).length;
+  const shorui    = rows.filter(r => isTsuka(r.shorui)).length;
+  // 1次面談数: 1次面談日に値が入っていればカウント（2次面談有無・参画フラグに依存しない）
+  const mendan1   = rows.filter(r => r.mendan1_date && String(r.mendan1_date).trim() !== '').length;
+  // 参画数: 契約管理の「営業対象月(sales_month)」が表示月と一致する契約件数
+  //   → 契約開始日・2次面談・稼働フラグに依存しない
+  //   → 全期間('all')選択時のフォールバック: 人材提案シートの参画フラグ・参画日で集計
+  let sanka;
+  if (displayMonth && displayMonth !== 'all' && cRows && cRows.length) {
+    sanka = cRows.filter(r => r.sales_month === displayMonth).length;
+  } else {
+    sanka = rows.filter(r =>
+      isMaru(r.sanka) || (r.sanka_date && String(r.sanka_date).trim() !== '')
+    ).length;
+  }
+
+  // ★ デバッグ: 全行の値一覧（値が入っている行のみ）
+  const mendan1Vals = rows.map(r => r.mendan1_date).filter(v => v !== '' && v !== null && v !== undefined);
+  const sankaVals   = rows.map(r => r.sanka).filter(v => v !== '' && v !== null && v !== undefined);
+  console.log('[calculateKpis] 案件側返信:', ankHensin,
+    '| 全値サンプル:', [...new Set(rows.map(r => r.ank_hensin))].slice(0,5));
+  console.log('[calculateKpis] 書類通過:', shorui,
+    '| 全値サンプル:', [...new Set(rows.map(r => r.shorui))].slice(0,5));
+  console.log('[calculateKpis] 1次面談日キー認識件数(値あり):', mendan1Vals.length,
+    '| parseDateSafe通過:', mendan1, '| 値サンプル:', mendan1Vals.slice(0,5));
+  console.log('[calculateKpis] 参画フラグ(値あり):', sankaVals.length,
+    '| isMaru通過:', sanka, '| 値サンプル:', sankaVals.slice(0,5));
+
+  return {
+    total,
+    ninHensin,
+    ninHensinRate : safePct(ninHensin, total),      // 人材側返信率 = 人材返信数 ÷ 紹介数
+    ankTeian,
+    teianRate     : safePct(ankTeian, ninHensin),   // 提案率       = 案件提案数 ÷ 人材返信数 【修正】
+    ankHensin,
+    hensinRate    : safePct(ankHensin, ankTeian),   // 返信率       = 案件返信数 ÷ 案件提案数
+    shorui,
+    mendan1,
+    sanka,
+    sankaRate1    : safePct(sanka, ankTeian),       // 参画率①     = 参画数 ÷ 案件提案数
+    sankaRate2    : safePct(sanka, mendan1),        // 成約率②     = 参画数 ÷ 1次面談数
+  };
+}
+
+// ---------- 前月比較 ----------
+
+// 【修正】YYYY-MM 形式に統一（/ も許容してフォールバック）
+function prevMonthStr(yyyymm) {
+  if (!yyyymm) return '';
+  const parts = yyyymm.split(/[-\/]/);   // YYYY-MM / YYYY/MM 両対応
+  const y = +parts[0], m = +parts[1];
+  if (!y || !m) return '';
+  if (m === 1) return `${y - 1}-12`;
+  return `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+// curRev/prvRev = 月次売上・粗利 / curCum/prvCum = 累積売上・粗利
+function calculateComparison(curKpis, prvKpis, hasPrev, curRev, prvRev, curCum, prvCum) {
+  // src: 'kpi'=紹介日ベース / 'rev'=月次契約 / 'cum'=累積契約
+  const metrics = [
+    { key: 'total',        label: '紹介数',              unit: '件',  src: 'kpi' },
+    { key: 'ninHensin',    label: '人材側返信数',         unit: '件',  src: 'kpi' },
+    { key: 'ninHensinRate',label: '人材側返信率(÷紹介)',  unit: '%',   src: 'kpi' },
+    { key: 'ankTeian',     label: '案件側提案数',         unit: '件',  src: 'kpi' },
+    { key: 'teianRate',    label: '提案率(÷人材返信)',    unit: '%',   src: 'kpi' },
+    { key: 'ankHensin',    label: '案件側返信数',         unit: '件',  src: 'kpi' },
+    { key: 'hensinRate',   label: '返信率(÷案件提案)',    unit: '%',   src: 'kpi' },
+    { key: 'shorui',       label: '書類通過数',           unit: '件',  src: 'kpi' },
+    { key: 'mendan1',      label: '1次面談数',            unit: '件',  src: 'kpi' },
+    { key: 'sanka',        label: '参画数（紹介月）',     unit: '件',  src: 'kpi' },
+    { key: 'sankaRate1',   label: '参画率①(÷提案)',      unit: '%',   src: 'kpi' },
+    { key: 'sankaRate2',   label: '成約率②(÷面談)',      unit: '%',   src: 'kpi' },
+    // 月次売上・粗利（その月に稼働中の契約）
+    { key: 'sanka',        label: '稼働件数（当月）',     unit: '件',  src: 'rev' },
+    { key: 'uriage',       label: '月次売上',             unit: '万円',src: 'rev' },
+    { key: 'arari',        label: '月次粗利',             unit: '万円',src: 'rev' },
+    { key: 'arariPerSanka',label: '粗利/稼働',            unit: '万円',src: 'rev' },
+    // 累積売上・粗利（開始〜当月までの合算）
+    { key: 'uriage',       label: '累積売上',             unit: '万円',src: 'cum' },
+    { key: 'arari',        label: '累積粗利',             unit: '万円',src: 'cum' },
+  ];
+  return metrics.map(({ key, label, unit, src }) => {
+    const curObj = src === 'cum' ? (curCum || {})
+                 : src === 'rev' ? (curRev  || {})
+                 :                 (curKpis || {});
+    const prvObj = src === 'cum' ? (prvCum || {})
+                 : src === 'rev' ? (prvRev  || {})
+                 :                 (prvKpis || {});
+    const cur = curObj[key] ?? null;
+    const prv = hasPrev ? (prvObj[key] ?? null) : null;
+    let diffStr = '—', cls = 'diff-same';
+    if (hasPrev && cur !== null && prv !== null) {
+      const diff = Math.round((cur - prv) * 10) / 10;
+      if (diff > 0) { diffStr = `↑ +${diff}${unit}`; cls = 'diff-up'; }
+      else if (diff < 0) { diffStr = `↓ ${diff}${unit}`; cls = 'diff-down'; }
+      else { diffStr = `→ 0${unit}`; cls = 'diff-same'; }
+    }
+    return { label, cur, prv, diffStr, cls, unit };
+  });
+}
+
+// ---------- レンダリング ----------
+
+function fmtVal(v, unit) {
+  if (v === null || v === undefined) return '—';
+  return unit === '%' ? `${v}%` : `${v}${unit}`;
+}
+
+// rev = 月次売上・粗利 / cum = 累積売上・粗利
+function renderKpiCards(kpis, rev, cum) {
+  rev = rev || {};
+  cum = cum || {};
+  const fmtMoney = v => (v !== null && v !== undefined) ? v.toLocaleString('ja-JP') : '—';
+
+  // 紹介日ベース KPI カード
+  const kpiCards = [
+    { label: '紹介数',              value: kpis.total,         unit: '件'  },
+    { label: '人材側返信数',        value: kpis.ninHensin,     unit: '件'  },
+    { label: '人材側返信率(÷紹介)', value: kpis.ninHensinRate, unit: '%',  hi: true },
+    { label: '案件側提案数',        value: kpis.ankTeian,      unit: '件'  },
+    { label: '提案率(÷人材返信)',   value: kpis.teianRate,     unit: '%'  },
+    { label: '案件側返信数',        value: kpis.ankHensin,     unit: '件'  },
+    { label: '返信率(÷案件提案)',   value: kpis.hensinRate,    unit: '%'  },
+    { label: '書類通過数',          value: kpis.shorui,        unit: '件'  },
+    { label: '1次面談数',           value: kpis.mendan1,       unit: '件'  },
+    { label: '参画数（紹介月）',    value: kpis.sanka,         unit: '件', hi: true },
+    { label: '参画率①(÷提案)',     value: kpis.sankaRate1,    unit: '%',  hi: true },
+    { label: '成約率②(÷面談)',     value: kpis.sankaRate2,    unit: '%',  hi: true },
+  ];
+  const kpiHtml = kpiCards.map(c => `
+    <div class="kpi-card${c.hi ? ' highlight' : ''}">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value !== null && c.value !== undefined ? c.value : '—'}</div>
+      <div class="unit">${c.unit}</div>
+    </div>`).join('');
+
+  // 月次売上・粗利（その月に稼働している契約の合計）
+  const divRev = `<div class="kpi-cards-divider">▼ 月次売上・粗利（当月稼働契約）</div>`;
+  const revCards = [
+    { label: '稼働件数（当月）', value: rev.sanka,                   unit: '件'  },
+    { label: '月次売上',         value: fmtMoney(rev.uriage),        unit: '万円'},
+    { label: '月次粗利',         value: fmtMoney(rev.arari),         unit: '万円'},
+    { label: '粗利/稼働',        value: fmtMoney(rev.arariPerSanka), unit: '万円'},
+  ];
+  const revHtml = revCards.map(c => `
+    <div class="kpi-card revenue">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value !== null && c.value !== undefined ? c.value : '—'}</div>
+      <div class="unit">${c.unit}</div>
+    </div>`).join('');
+
+  // 累積売上・粗利（開始〜当月までの全月分合算）
+  const divCum = `<div class="kpi-cards-divider">▼ 累積売上・粗利（開始〜当月）</div>`;
+  const cumCards = [
+    { label: '累積売上', value: fmtMoney(cum.uriage), unit: '万円'},
+    { label: '累積粗利', value: fmtMoney(cum.arari),  unit: '万円'},
+  ];
+  const cumHtml = cumCards.map(c => `
+    <div class="kpi-card cumulative">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value !== null && c.value !== undefined ? c.value : '—'}</div>
+      <div class="unit">${c.unit}</div>
+    </div>`).join('');
+
+  const defLegend = `
+    <div style="margin-top:12px;padding:8px 14px;background:#F8F9FA;border-left:3px solid #90A4AE;
+                border-radius:4px;font-size:11px;color:#546E7A;line-height:1.8">
+      <span style="font-weight:bold;color:#37474F">📌 集計定義：</span>
+      　<span>🔵 <b>営業成果</b> = 契約管理シートの「営業対象月」ベース</span>
+      　<span>🟢 <b>月次稼働</b> = 契約開始日〜終了日の期間ベース（実際に稼働している月）</span>
+      　<span>🔵 <b>新規売上</b> = 契約区分「新規」かつ営業対象月が表示月</span>
+      　<span>🟢 <b>月次売上</b> = 表示月に稼働中のすべての契約の合計</span>
+    </div>`;
+  document.getElementById('kpiCards').innerHTML = kpiHtml + divRev + revHtml + divCum + cumHtml + defLegend;
+}
+
+function renderFunnel(kpis) {
+  const steps = [
+    { label: '紹介',     count: kpis.total     },
+    { label: '人材返信', count: kpis.ninHensin  },
+    { label: '案件提案', count: kpis.ankTeian   },
+    { label: '案件返信', count: kpis.ankHensin  },
+    { label: '書類通過', count: kpis.shorui     },
+    { label: '1次面談',  count: kpis.mendan1    },
+    { label: '参画',     count: kpis.sanka      },
+  ];
+  const max = kpis.total || 1;
+  let html = '';
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const pct = Math.round(s.count / max * 100);
+    let convStr = '', dropStr = '';
+    if (i > 0) {
+      const prev = steps[i - 1].count;
+      const conv = prev > 0 ? Math.round(s.count / prev * 1000) / 10 : 0;
+      const drop = Math.round((100 - conv) * 10) / 10;
+      convStr = `<span class="conv">転換率 ${conv}%</span>`;
+      dropStr = `<span class="drop"> / 離脱率 ${drop}%</span>`;
+    }
+    html += `
+      <div class="funnel-row">
+        <div class="funnel-label">${s.label}</div>
+        <div class="funnel-bar-wrap">
+          <div class="funnel-bar" style="width:${Math.max(pct,2)}%">${pct}%</div>
+        </div>
+        <div class="funnel-count">${s.count}</div>
+        <div class="funnel-rates">${convStr}${dropStr}</div>
+      </div>`;
+  }
+  document.getElementById('funnelWrap').innerHTML = html;
+}
+
+function renderComparisonTable(comp) {
+  document.getElementById('compBody').innerHTML = comp.map(r => `
+    <tr>
+      <td style="text-align:left">${r.label}</td>
+      <td>${fmtVal(r.cur, r.unit)}</td>
+      <td>${fmtVal(r.prv, r.unit)}</td>
+      <td class="${r.cls}">${r.diffStr}</td>
+    </tr>`).join('');
+}
+
+// 稼働明細テーブル（当月稼働中の契約行を表示）
+// getActiveContracts() の結果を受け取り、月次売上・粗利の内訳を表示する
+function renderContractTable(cRows) {
+  const tbody = document.getElementById('contractBody');
+  if (!cRows || cRows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="color:#999;padding:16px">' +
+      '当月稼働中の契約なし（契約管理シートの稼働フラグ・契約期間を確認してください）</td></tr>';
+    return;
+  }
+  const fmtPct = v => v === null ? '<span style="color:#bbb">—</span>'
+                                 : `${(v * 100).toFixed(1)}%`;
+  const fmtMon = v => v === null ? '<span style="color:#bbb">—</span>'
+                                 : `${v.toLocaleString('ja-JP')}万`;
+  const fmtDate = v => v ? String(v).slice(0, 10) : '—';  // YYYY/MM/DD or YYYY-MM-DD 先頭10文字
+
+  tbody.innerHTML = cRows.map(r => {
+    const fixedCell = r.rate_fixed !== null
+      ? `<td class="rate-fixed">${fmtPct(r.rate_fixed)} ★</td>`
+      : `<td class="rate-auto">—</td>`;
+    const kbnBadge = r.keiyaku_type
+      ? `<span style="font-size:10px;padding:1px 5px;border-radius:8px;` +
+        `background:${r.keiyaku_type.includes('延長') ? '#FFF3E0' : '#E8F5E9'};` +
+        `color:${r.keiyaku_type.includes('延長') ? '#E65100' : '#2E7D32'}">${r.keiyaku_type}</span>`
+      : '';
+    return `<tr>
+      <td>${r.sales_month ? r.sales_month.replace('-','/') : '—'}</td>
+      <td>${r.name}${kbnBadge}</td>
+      <td style="text-align:left">${r.anken}</td>
+      <td style="font-size:11px;color:#666">${fmtDate(r.start_date)}〜${fmtDate(r.end_date)}</td>
+      <td>${fmtMon(r.tanka_uriage)}</td>
+      <td>${fmtMon(r.tanka_arari)}</td>
+      <td class="rate-auto">${fmtPct(r.rate_auto)}</td>
+      ${fixedCell}
+      <td><b>${fmtPct(r.rate_eff)}</b></td>
+      <td class="money">${fmtMon(r.monthly_uriage)}</td>
+      <td class="money">${fmtMon(r.monthly_arari)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function badge(v, truthy) {
+  if (truthy(v)) return `<span class="badge badge-ok">○</span>`;
+  const s = String(v).trim();
+  if (s === '' || s === '—') return `<span class="badge badge-gray">—</span>`;
+  return `<span class="badge badge-ng">${s}</span>`;
+}
+
+function renderDataTable(rows) {
+  if (rows.length === 0) {
+    document.getElementById('dataBody').innerHTML =
+      '<tr><td colspan="13" style="color:#999;padding:20px">データなし</td></tr>';
+    return;
+  }
+  document.getElementById('dataBody').innerHTML = rows.map(r => `
+    <tr>
+      <td>${formatDate(r.intro_date)}</td>
+      <td>${r.tanto}</td>
+      <td class="left">${r.company}</td>
+      <td class="left">${r.anken}</td>
+      <td>${r.jinzai}</td>
+      <td>${r.shiire}</td>
+      <td>${badge(r.nin_hensin, isMaru)}</td>
+      <td>${badge(r.ank_teian,  isMaru)}</td>
+      <td>${badge(r.shorui, isTsuka)}</td>
+      <td>${formatDate(r.mendan1_date) || badge(r.mendan1_date, v => false)}</td>
+      <td>${badge(r.sanka, isMaru)}</td>
+      <td>${formatDate(r.sanka_date)}</td><!-- 【新規】参画日 -->
+      <td>${r.teian_kin_raw || ''}</td><!-- 【新規】売上（提案金額） -->
+    </tr>`).join('');
+}
+
+// ---------- 自動考察・アクション提案 ----------
+
+// 前月比の差分オブジェクトを生成するヘルパー
+// unit: 表示単位文字列 / isRate: %pt 表示にする場合 true
+function momDelta(cur, prv, unit, isRate) {
+  if (cur === null || cur === undefined || prv === null || prv === undefined) return null;
+  const raw = Math.round((cur - prv) * 10) / 10;
+  const suffix = isRate ? '%pt' : unit;
+  const sign   = raw > 0 ? '+' : '';
+  const icon   = raw > 0 ? '↑' : raw < 0 ? '↓' : '→';
+  const cls    = raw > 0 ? 'up' : raw < 0 ? 'down' : 'same';
+  return { raw, icon, cls, text: `${icon} ${sign}${raw}${suffix}` };
+}
+
+// 前月比サマリー HTML を生成（insight-item.trend として埋め込む）
+function buildMomInsightItem(kpis, prevKpis, rev, prevRev, hasPrev, prevMonth, curMonth) {
+  if (!hasPrev || !prevMonth) return null;
+
+  const dispPrev = prevMonth.replace('-', '/');
+  const dispCur  = (curMonth && curMonth !== 'all') ? curMonth.replace('-', '/') : '今月';
+
+  // --- 各指標の差分を計算 ---
+  const metrics = [
+    {
+      label: '紹介数',
+      cur:  kpis.total,         prv: prevKpis.total,
+      unit: '件',               isRate: false,
+      fmtCur: v => `${v}件`,
+    },
+    {
+      label: '提案率',
+      cur:  kpis.teianRate,     prv: prevKpis.teianRate,
+      unit: '%',                isRate: true,
+      fmtCur: v => `${v}%`,
+    },
+    {
+      label: '案件返信率',
+      cur:  kpis.hensinRate,    prv: prevKpis.hensinRate,
+      unit: '%',                isRate: true,
+      fmtCur: v => `${v}%`,
+    },
+    {
+      label: '参画数',
+      cur:  kpis.sanka,         prv: prevKpis.sanka,
+      unit: '件',               isRate: false,
+      fmtCur: v => `${v}件`,
+    },
+    {
+      label: '月次売上',
+      cur:  rev.uriage,         prv: prevRev.uriage,
+      unit: '万',               isRate: false,
+      fmtCur: v => v !== null ? `${v}万` : '—',
+    },
+    {
+      label: '月次粗利',
+      cur:  rev.arari,          prv: prevRev.arari,
+      unit: '万',               isRate: false,
+      fmtCur: v => v !== null ? `${v}万` : '—',
+    },
+  ];
+
+  // --- ミニカード HTML ---
+  const cardHtml = metrics.map(m => {
+    const d = momDelta(m.cur, m.prv, m.unit, m.isRate);
+    const curStr  = (m.cur !== null && m.cur !== undefined) ? m.fmtCur(m.cur) : '—';
+    const prevStr = (m.prv !== null && m.prv !== undefined) ? m.fmtCur(m.prv) : '—';
+    const deltaHtml = d
+      ? `<span class="mc-delta ${d.cls}">${d.text}</span>`
+      : `<span class="mc-delta same">— 比較不可</span>`;
+    return `<div class="mom-card">
+      <div class="mc-label">${m.label}</div>
+      <div class="mc-cur">${curStr}</div>
+      <div class="mc-prev">前月 ${prevStr}</div>
+      ${deltaHtml}
+    </div>`;
+  }).join('');
+
+  // --- 自動サマリー文生成（意味が伝わる文章形式） ---
+  const dTotal  = momDelta(kpis.total,      prevKpis.total,      '件', false);
+  const dTeian  = momDelta(kpis.teianRate,  prevKpis.teianRate,  '%',  true);
+  const dHensin = momDelta(kpis.hensinRate, prevKpis.hensinRate, '%',  true);
+  const dSanka  = momDelta(kpis.sanka,      prevKpis.sanka,      '件', false);
+  const dUriage = momDelta(rev.uriage,      prevRev.uriage,      '万', false);
+  const dArari  = momDelta(rev.arari,       prevRev.arari,       '万', false);
+
+  const sentences = [];
+
+  // ── 文①：母数（紹介数）の状況 ──────────────────────────────────
+  if (dTotal) {
+    if (dTotal.raw > 3)
+      sentences.push(`紹介数は前月比<b>${dTotal.text}</b>と増加しており、活動量が拡大しています`);
+    else if (dTotal.raw < -3)
+      sentences.push(`紹介数は前月比<b>${dTotal.text}</b>と減少しています。母数の拡大が課題です`);
+    else
+      sentences.push(`紹介数は前月と同水準（${dTotal.text}）を維持しています`);
+  }
+
+  // ── 文②：参画成果の状況 ────────────────────────────────────────
+  if (dSanka) {
+    if (dSanka.raw > 0)
+      sentences.push(`参画数は前月比<span style="color:#1B5E20;font-weight:bold">${dSanka.text}の増加</span>と営業成果が出ています`);
+    else if (dSanka.raw < 0)
+      sentences.push(`参画数は前月比<span style="color:#B71C1C;font-weight:bold">${dSanka.text}の減少</span>となりました`);
+    else
+      sentences.push(`参画数は前月と同水準を維持しています`);
+  }
+
+  // ── 文③：転換率の質的評価（紹介数減でも率が改善なら好評価） ────
+  const rateUpLabels   = [];
+  const rateDownLabels = [];
+  if (dTeian)  { (dTeian.raw  > 5 ? rateUpLabels : dTeian.raw  < -5 ? rateDownLabels : []).push(`提案率（${dTeian.text}）`);  }
+  if (dHensin) { (dHensin.raw > 5 ? rateUpLabels : dHensin.raw < -5 ? rateDownLabels : []).push(`案件返信率（${dHensin.text}）`); }
+
+  if (rateUpLabels.length && dTotal && dTotal.raw <= 0) {
+    // 母数減でも率改善 → 質が向上していることを強調
+    sentences.push(`一方で${rateUpLabels.join('・')}が改善しており、<b>提案の質は向上しています</b>`);
+  } else if (rateUpLabels.length) {
+    sentences.push(`${rateUpLabels.join('・')}が<span style="color:#1B5E20">改善傾向</span>にあります`);
+  }
+  if (rateDownLabels.length) {
+    sentences.push(`<span style="color:#B71C1C">${rateDownLabels.join('・')}が低下しています。優先的に見直しが必要です</span>`);
+  }
+
+  // ── 文④：売上・粗利の状況（稼働件数との関連を示す） ────────────
+  if (dUriage || dArari) {
+    const revParts = [];
+    if (dUriage) revParts.push(`月次売上 ${dUriage.raw > 0 ? '<span style="color:#1B5E20;font-weight:bold">' + dUriage.text + '</span>' : '<span style="color:#B71C1C">' + dUriage.text + '</span>'}`);
+    if (dArari)  revParts.push(`月次粗利 ${dArari.raw  > 0 ? '<span style="color:#1B5E20;font-weight:bold">' + dArari.text  + '</span>' : '<span style="color:#B71C1C">' + dArari.text  + '</span>'}`);
+    const revSuffix = (dUriage && dUriage.raw > 0) ? '。稼働件数の増加または単価改善の効果が出ています' : '';
+    sentences.push(revParts.join('・') + revSuffix);
+  }
+
+  // ── 文⑤：次月への示唆 ──────────────────────────────────────────
+  if (dSanka && dSanka.raw > 0 && dTotal && dTotal.raw < 0) {
+    sentences.push(`<b>次月は紹介母数の拡大を優先</b>することで、更なる参画増が見込めます`);
+  } else if (dSanka && dSanka.raw <= 0 && rateUpLabels.length > 0) {
+    sentences.push(`転換率は改善しているため、<b>次月は紹介数の増加に注力</b>することで参画数アップが期待できます`);
+  } else if (rateDownLabels.length > 0) {
+    sentences.push(`転換率の低下フェーズを重点的に改善することが直近の優先課題です`);
+  }
+
+  const summaryText = sentences.length > 0
+    ? sentences.join('。') + '。'
+    : '前月データと比較できる指標がありません。';
+
+  const bodyHtml = `
+    <div class="mom-grid">${cardHtml}</div>
+    <div class="mom-summary">${summaryText}</div>`;
+
+  return {
+    type: 'trend', icon: '📈',
+    label: `前月比サマリー（${dispPrev} → ${dispCur}）`,
+    text: bodyHtml,
+    action: null
+  };
+}
+
+function generateInsights(kpis, month, prevKpis, rev, prevRev, hasPrev, prevMonth) {
+  prevKpis = prevKpis || {};
+  rev      = rev      || {};
+  prevRev  = prevRev  || {};
+
+  const items = [];
+  const { total, ninHensin, ninHensinRate, ankTeian, teianRate,
+          ankHensin, hensinRate, mendan1, sanka, sankaRate2 } = kpis;
+
+  // 1. 今月の要約（常時表示）
+  const dispMonth = (month && month !== 'all') ? month.replace('-', '/') + ' ' : '';
+  items.push({
+    type: 'info', icon: '📊',
+    label: dispMonth + '今月の要約',
+    text: `紹介 <b>${total}</b> 件 → 人材返信 <b>${ninHensin}</b> 件 → 案件提案 <b>${ankTeian}</b> 件 → 1次面談 <b>${mendan1}</b> 件 → 参画 <b>${sanka}</b> 件`,
+    action: null
+  });
+
+  // 2. 前月比サマリー（前月データがある場合のみ）
+  const momItem = buildMomInsightItem(kpis, prevKpis, rev, prevRev, hasPrev, prevMonth, month);
+  if (momItem) items.push(momItem);
+
+  if (total === 0) {
+    items.push({ type: 'info', icon: 'ℹ️', label: 'データなし', text: '対象月にデータがありません。', action: null });
+    return items;
+  }
+
+  // 3. 各フェーズの転換率チェック
+  const steps = [
+    {
+      name: '紹介 → 人材返信', rate: ninHensinRate,
+      good: 70, warn: 50,
+      action_bad:  '仕入先との関係強化・案件スペックの事前ヒアリング精度向上を優先',
+      action_warn: '人材への案件説明内容・対応スピードを見直す'
+    },
+    {
+      name: '人材返信 → 案件提案', rate: teianRate,
+      good: 60, warn: 40,
+      action_bad:  '提案先案件の精査・マッチング基準の見直しが最優先課題',
+      action_warn: '案件選定の優先順位付けと提案スピードを改善'
+    },
+    {
+      name: '案件提案 → 案件返信', rate: hensinRate,
+      good: 50, warn: 30,
+      action_bad:  '案件側へのフォローアップ強化・提案内容の質向上を検討',
+      action_warn: '提案後のフォロー頻度を上げる'
+    },
+    {
+      name: '1次面談 → 参画', rate: sankaRate2,
+      good: 50, warn: 30,
+      action_bad:  '面談後の意思確認・条件調整プロセスを見直す',
+      action_warn: '面談後のクロージングスピードを改善'
+    },
+  ];
+
+  // ボトルネック（最も低い転換率のフェーズ）を特定
+  let worstStep = null, worstRate = 101;
+  for (const s of steps) {
+    if (s.rate !== null && s.rate < worstRate) { worstRate = s.rate; worstStep = s; }
+  }
+
+  // 各フェーズのアイテム生成
+  let allGood = true;
+  for (const s of steps) {
+    if (s.rate === null) continue;
+    const isWorst = s === worstStep;
+    if (s.rate < s.warn) {
+      allGood = false;
+      items.push({
+        type: isWorst ? 'bottleneck' : 'caution',
+        icon: isWorst ? '🔴' : '⚠️',
+        label: `${isWorst ? '【ボトルネック】' : '【要注意】'}${s.name}：${s.rate}%`,
+        text: isWorst
+          ? 'このフェーズの転換率が最も低く、パイプライン全体の阻害要因になっています。'
+          : '転換率が低下しています。改善余地があります。',
+        action: isWorst ? s.action_bad : s.action_warn
+      });
+    } else if (s.rate < s.good) {
+      allGood = false;
+      items.push({
+        type: 'caution', icon: '⚠️',
+        label: `【改善余地あり】${s.name}：${s.rate}%`,
+        text: '基準値を下回っています。',
+        action: s.action_warn
+      });
+    } else {
+      items.push({
+        type: 'good', icon: '✅',
+        label: `【良好】${s.name}：${s.rate}%`,
+        text: 'このフェーズは基準を満たしています。',
+        action: null
+      });
+    }
+  }
+
+  // 全フェーズ良好なら総評
+  if (allGood && total > 0) {
+    items.push({
+      type: 'good', icon: '🎉',
+      label: '全体状況：良好',
+      text: 'すべてのフェーズで転換率が基準を満たしています。引き続き件数増加を目指しましょう。',
+      action: '紹介数の増加（新規仕入先開拓・既存関係強化）を優先'
+    });
+  }
+
+  // ── 今月の優先アクション & 総括（常時表示・代表向けサマリー） ──────
+  if (total > 0 || (rev.uriage !== null && rev.uriage !== undefined)) {
+    const dTotalA  = hasPrev ? momDelta(total,      (prevKpis || {}).total,      '件', false) : null;
+    const dTeianA  = hasPrev ? momDelta(teianRate,  (prevKpis || {}).teianRate,  '%',  true)  : null;
+    const dHensinA = hasPrev ? momDelta(hensinRate, (prevKpis || {}).hensinRate, '%',  true)  : null;
+    const dUriageA = hasPrev ? momDelta((rev || {}).uriage, (prevRev || {}).uriage, '万', false) : null;
+
+    // 各条件フラグ
+    const lowVolume  = total < 5 || (dTotalA  && dTotalA.raw  < -3);
+    const lowTeian   = teianRate  !== null && (teianRate  < 40 || (dTeianA  && dTeianA.raw  < -5));
+    const lowHensin  = hensinRate !== null && (hensinRate < 30 || (dHensinA && dHensinA.raw < -5));
+    const revGrowing = dUriageA ? dUriageA.raw > 0 : (rev && rev.uriage > 0);
+
+    // アクションリスト（条件を満たしたものだけ出力）
+    const actions = [];
+    if (lowVolume)  actions.push({ ok: false, text: `紹介数が不足しています → <b>新規開拓・仕入先へのアプローチ強化</b>を優先` });
+    if (lowTeian)   actions.push({ ok: false, text: `提案率が低下しています → <b>提案精度・マッチング基準を見直し</b>` });
+    if (lowHensin)  actions.push({ ok: false, text: `返信率が低下しています → <b>案件内容・提案の送り方を改善</b>` });
+    if (revGrowing) actions.push({ ok: true,  text: `稼働売上は増加傾向 → <b>既存取引先の横展開（追加案件発掘）</b>を強化` });
+    if (actions.length === 0)
+      actions.push({ ok: true, text: '現在の指標は全体的に良好です。現状の活動を継続してください' });
+
+    // 総括文（状況パターンに応じて自動生成）
+    let conclusion;
+    if (lowVolume && (lowTeian || lowHensin)) {
+      conclusion = '営業活動の量・質ともに改善の余地があります。「提案精度の向上」と「返信率改善」を優先しつつ、紹介母数の拡大も並行して進めましょう。';
+    } else if (lowVolume) {
+      conclusion = '転換率は維持できていますが、母数（紹介数）が不足しています。次月は新規開拓を最優先に取り組みましょう。';
+    } else if (lowTeian || lowHensin) {
+      conclusion = '活動量は確保できていますが、成約率向上の余地があります。来月は「提案精度」と「返信率改善」に注力してください。';
+    } else if (revGrowing && allGood) {
+      conclusion = '営業活動・稼働売上ともに改善傾向にあります。既存取引先との関係強化と横展開でさらなる成長を目指しましょう。';
+    } else {
+      conclusion = '営業活動の量は維持できています。引き続き各フェーズの転換率向上を意識した活動を継続してください。';
+    }
+
+    const actionsHtml = actions.map(a =>
+      `<li style="margin-bottom:6px;padding-left:4px">
+        ${a.ok ? '✅' : '📌'} ${a.text}
+      </li>`
+    ).join('');
+
+    items.push({
+      type: 'action_plan', icon: '🎯',
+      label: '今月の優先アクション',
+      text: `
+        <ul style="margin:8px 0 12px 0;padding-left:0;list-style:none;font-size:13px;line-height:1.8">
+          ${actionsHtml}
+        </ul>
+        <div style="border-top:1px solid #dde;padding-top:8px;font-size:12px;color:#444;line-height:1.7">
+          <b>【総括】</b> ${conclusion}
+        </div>`,
+      action: null
+    });
+  }
+
+  return items;
+}
+
+function renderInsights(kpis, month, prevKpis, rev, prevRev, hasPrev, prevMonth) {
+  const items = generateInsights(kpis, month, prevKpis, rev, prevRev, hasPrev, prevMonth);
+  document.getElementById('insightSection').innerHTML =
+    `<div class="insight-box">${items.map(it => `
+      <div class="insight-item ${it.type}">
+        <div class="insight-icon">${it.icon}</div>
+        <div class="insight-text">
+          <div class="insight-label">${it.label}</div>
+          <div>${it.text}</div>
+          ${it.action ? `<div class="insight-action">${it.action}</div>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+}
+
+// ---------- 担当者別・上位会社別分析 ----------
+
+// グループ内の行からKPI集計値を計算（calculateKpisの軽量版）
+// rows        : このグループに属する人材提案シート行
+// displayMonth: 'YYYY-MM' | 'all' | undefined
+// cRows       : 契約管理シートの全行 — 参画数を「営業対象月」でクロス集計するために使用
+//
+// 参画数の集計方法:
+//   表示月が指定 → rows の jinzai 名と cRows.name を照合し、
+//                  sales_month === displayMonth の契約件数をカウント
+//   全期間 or cRows なし → rows の参画フラグ・参画日でフォールバック
+function calcGroupStats(rows, displayMonth, cRows) {
+  const total     = rows.length;
+  const ninHensin = rows.filter(r => isMaru(r.nin_hensin)).length;
+  const ankTeian  = rows.filter(r => isMaru(r.ank_teian)).length;
+  const ankHensin = rows.filter(r => isMaru(r.ank_hensin)).length;
+  const mendan1   = rows.filter(r => r.mendan1_date && String(r.mendan1_date).trim() !== '').length;
+  // 参画数: 契約管理の「営業対象月」でクロス集計
+  let sanka;
+  if (displayMonth && displayMonth !== 'all' && cRows && cRows.length) {
+    // このグループの jinzai 名セットを作成
+    const jinzaiSet = new Set(
+      rows.map(r => String(r.jinzai || '').trim()).filter(Boolean)
+    );
+    sanka = cRows.filter(r =>
+      r.sales_month === displayMonth &&
+      jinzaiSet.has(String(r.name || '').trim())
+    ).length;
+  } else {
+    sanka = rows.filter(r =>
+      isMaru(r.sanka) || (r.sanka_date && String(r.sanka_date).trim() !== '')
+    ).length;
+  }
+  return {
+    total, ninHensin, ankTeian, ankHensin, mendan1, sanka,
+    teianRate  : safePct(ankTeian,  ninHensin),   // 提案率   = 提案÷人材返信
+    hensinRate : safePct(ankHensin, ankTeian),    // 返信率   = 案件返信÷提案
+    sankaRate  : safePct(sanka,     ankTeian),    // 参画率   = 参画÷提案
+    sankaRate2 : safePct(sanka,     mendan1),     // 成約率②  = 参画÷面談
+  };
+}
+
+// revRows（getActiveContracts結果）の売上・粗利を byField ごとに合算する
+// byField : 'tanto' | 'company'
+// filterFn: 任意の絞り込み関数（省略時は全件対象）
+// 返り値  : { [fieldValue]: { uriage, arari } }
+//
+// ★ jinzai（人材名）→ tanto/company のマッピングは allRows（全期間の人材提案行）から構築する
+//    kpiRows（表示月の紹介分のみ）だと「前月以前に紹介・成約した稼働中の人」が漏れるため
+function buildRevMap(revRows, byField, filterFn) {
+  // jinzai（人材名） → byField 値のマップを【全件】から構築
+  const jinzaiMap = {};
+  (allRows || []).forEach(r => {
+    const jinzai   = String(r.jinzai   || '').trim();
+    const fieldVal = String(r[byField] || '').trim();
+    if (jinzai && fieldVal) jinzaiMap[jinzai] = fieldVal;
+  });
+
+  const rows = filterFn ? (revRows || []).filter(filterFn) : (revRows || []);
+  const map = {};
+  rows.forEach(r => {
+    const jinzai   = String(r.name || '').trim();
+    const fieldVal = jinzaiMap[jinzai];
+    if (!fieldVal) return;
+    if (!map[fieldVal]) map[fieldVal] = { uriage: 0, arari: 0 };
+    if (r.monthly_uriage !== null) map[fieldVal].uriage += r.monthly_uriage;
+    if (r.monthly_arari  !== null) map[fieldVal].arari  += r.monthly_arari;
+  });
+  return map;
+}
+
+// 担当者の評価ロジック
+function evaluateTanto(s) {
+  // 高成績: 参画2件以上 + 参画率30%以上
+  if (s.sanka >= 2 && (s.sankaRate || 0) >= 30 && (s.teianRate || 0) >= 50)
+    return { label: '高成績', cls: 'eval-top', icon: '🏆' };
+  // 成果あり: 参画1件以上 + 提案率50%以上
+  if (s.sanka >= 1 && (s.teianRate || 0) >= 50)
+    return { label: '成果あり', cls: 'eval-good', icon: '✅' };
+  // 参画はあるが転換率が低い
+  if (s.sanka >= 1)
+    return { label: '転換率改善', cls: 'eval-caution', icon: '⚠️' };
+  // 活動量不足
+  if (s.total < 3)
+    return { label: '活動量不足', cls: 'eval-low', icon: '📉' };
+  // 提案率が低い
+  if (s.ankTeian > 0 && (s.teianRate || 0) < 50)
+    return { label: '提案率低下', cls: 'eval-caution', icon: '⚠️' };
+  // 案件返信率が低い
+  if (s.ankTeian > 0 && (s.hensinRate || 0) < 40)
+    return { label: '返信率低下', cls: 'eval-caution', icon: '⚠️' };
+  return { label: '標準', cls: 'eval-normal', icon: '—' };
+}
+
+// 担当者の営業タイプを分類（強み可視化）
+// s       : calcGroupStats の戻り値
+// avgTotal: 全担当者の平均紹介数（ハンター判定の相対閾値に使用）
+function classifyTantoType(s, avgTotal) {
+  const teian   = s.teianRate  || 0;
+  const hensin  = s.hensinRate || 0;
+  const closeR  = s.sankaRate2 || 0;  // 成約率 = 参画÷面談
+  const vol     = s.total;
+  const avg     = avgTotal || 1;
+
+  // 新規開拓型: 紹介数が平均の1.2倍以上 かつ 提案率50%以上
+  if (vol >= avg * 1.2 && teian >= 50)
+    return { key: 'hunter', label: '新規開拓型', cls: 'type-hunter', icon: '🎯',
+             comment: '紹介母数が多く提案率も高い。新規開拓のエース' };
+
+  // クロージング型: 面談2件以上 かつ 成約率60%以上
+  if (s.mendan1 >= 2 && closeR >= 60)
+    return { key: 'closer', label: 'クロージング型', cls: 'type-closer', icon: '🤝',
+             comment: '面談後の成約率が高い。クロージングに強み' };
+
+  // 提案型: 提案率55%以上 かつ 返信率45%以上
+  if (teian >= 55 && hensin >= 45)
+    return { key: 'pitcher', label: '提案型', cls: 'type-pitcher', icon: '📋',
+             comment: '案件とのマッチング精度が高い。提案品質に強み' };
+
+  // 安定型: 参画実績あり かつ 提案率・返信率が一定以上
+  if (s.sanka >= 1 && teian >= 35 && hensin >= 30)
+    return { key: 'stable', label: '安定型', cls: 'type-stable', icon: '✅',
+             comment: 'バランス良く成果を出している安定型' };
+
+  // 改善必要: 活動量少 または 提案率低い
+  if (vol < 3 || (teian < 30 && vol >= 3))
+    return { key: 'low', label: '改善必要', cls: 'type-low', icon: '📉',
+             comment: vol < 3 ? '活動量の拡大が必要' : '提案率・転換率の改善が必要' };
+
+  return { key: 'normal', label: '標準', cls: 'type-normal', icon: '—',
+           comment: '標準的な活動水準' };
+}
+
+// 上位会社の評価ロジック（売上×成約率マトリクス）
+function evaluateCompany(s) {
+  const sankaR  = s.sankaRate  || 0;
+  const hensinR = s.hensinRate || 0;
+  const hasRev  = (s.arari || 0) > 0;
+
+  // 優先取引先: 売上あり × 成約率高 × 返信率高
+  if (hasRev && sankaR >= 20 && hensinR >= 40)
+    return { label: '優先取引先', cls: 'eval-top', icon: '⭐',
+             comment: '売上・成約率ともに高い。最重要取引先' };
+  // 伸びしろあり: 成約率高 × 売上まだ低（横展開に期待）
+  if (sankaR >= 20 && !hasRev)
+    return { label: '伸びしろあり', cls: 'eval-good', icon: '🎯',
+             comment: '成約率は高いが売上これから。横展開で成長余地あり' };
+  // 安定取引: 売上あり × 成約率普通
+  if (hasRev && sankaR >= 10)
+    return { label: '安定取引', cls: 'eval-good', icon: '✓',
+             comment: '安定的な取引関係。提案頻度を維持' };
+  // 改善必要: 売上はあるが成約率低い
+  if (hasRev && sankaR < 10 && s.ankTeian >= 3)
+    return { label: '改善必要', cls: 'eval-caution', icon: '⚠️',
+             comment: '取引規模は大きいが提案効率が低い。アプローチを見直し' };
+  // 優先度低: 返信率も成約率も低い
+  if (s.ankTeian >= 3 && hensinR < 30)
+    return { label: '優先度低', cls: 'eval-low', icon: '🔴',
+             comment: '返信率・成約率ともに低い。費用対効果を再検討' };
+  return { label: '実績少', cls: 'eval-normal', icon: '△',
+           comment: 'データ不足。継続観察中' };
+}
+
+// 数値フォーマットヘルパー（分析テーブル専用）
+function fmtAnalysisPct(v) {
+  if (v === null || v === undefined) return '<span style="color:#bbb">—</span>';
+  const cls = v >= 50 ? 'pct-hi' : v >= 30 ? 'pct-md' : 'pct-lo';
+  return `<span class="${cls}">${v}%</span>`;
+}
+function fmtAnalysisMon(v) {
+  if (!v) return '<span style="color:#ccc">—</span>';
+  return `<span class="money-cell">${v.toLocaleString('ja-JP')}万</span>`;
+}
+
+// ─── 担当者別パフォーマンス テーブルを描画 ───────────────────────────
+// month: 現在の表示月（新規判定に使用）
+function renderTantoAnalysis(kpiRows, revRows, month) {
+  const el = document.getElementById('tantoSection');
+  if (!kpiRows || kpiRows.length === 0) {
+    el.innerHTML = '<p class="analysis-subtitle">表示月のデータがありません</p>';
+    return;
+  }
+
+  // ── 2種類の売上マップを構築 ───────────────────────────────────────
+  // 月次（全稼働契約）: isActiveInMonth で判定した revRows をそのまま集計 → 経営数字
+  const revMapAll = buildRevMap(revRows, 'tanto');
+  // 新規（今月成約）: contractRows 全件から sales_month===month の新規契約を抽出 → 営業成果
+  // ★ revRows（稼働中）ではなく contractRows を使う
+  //    → 3月成約・4月開始でも 3月の新規売上に正しく含まれる
+  const newContractRowsTanto = getNewContracts(contractRows, month);
+  const revMapNew = buildRevMap(newContractRowsTanto, 'tanto');
+
+  // kpiRows を担当者ごとにグループ化
+  const groups = {};
+  kpiRows.forEach(r => {
+    const key = String(r.tanto || '').trim() || '(未入力)';
+    (groups[key] = groups[key] || []).push(r);
+  });
+
+  // 集計 → ソート（参画数↓ → 月次粗利↓）
+  const list = Object.entries(groups)
+    .map(([name, rows]) => {
+      // 参画数: 契約管理の営業対象月×jinzai名でクロス集計（contractRows はグローバル）
+      const s      = calcGroupStats(rows, month, contractRows);
+      const revAll = revMapAll[name] || {};
+      const revNew = revMapNew[name] || {};
+      return {
+        name, ...s,
+        // 月次（全稼働）
+        uriage    : revAll.uriage || null,
+        arari     : revAll.arari  || null,
+        // 新規（今月成約）
+        newUriage : revNew.uriage || null,
+        newArari  : revNew.arari  || null,
+      };
+    })
+    .sort((a, b) => b.sanka - a.sanka || (b.arari || 0) - (a.arari || 0));
+
+  // 平均紹介数（営業タイプ分類の閾値に使用）
+  const avgTotal = list.length > 0
+    ? list.reduce((s, r) => s + r.total, 0) / list.length
+    : 1;
+
+  const tbody = list.map((r, i) => {
+    const rank = i + 1;
+    const rnk  = rank <= 3
+      ? `<span class="rank-badge rank-${rank}">${rank}</span>`
+      : `<span class="rank-badge rank-other">${rank}</span>`;
+    const ev   = evaluateTanto(r);
+    const typ  = classifyTantoType(r, avgTotal);
+    const top  = rank <= 3 ? ' class="top-row"' : '';
+    return `<tr${top}>
+      <td>${rnk}</td>
+      <td class="name-cell">${r.name}</td>
+      <td><span class="eval-badge ${ev.cls}">${ev.icon} ${ev.label}</span></td>
+      <td style="min-width:90px">
+        <span class="type-badge ${typ.cls}">${typ.icon} ${typ.label}</span>
+        <span class="type-comment">${typ.comment}</span>
+      </td>
+      <td>${r.total}</td>
+      <td>${r.ninHensin}</td>
+      <td>${r.ankTeian}</td>
+      <td>${r.ankHensin}</td>
+      <td>${r.mendan1}</td>
+      <td><b>${r.sanka}</b></td>
+      <td>${fmtAnalysisPct(r.teianRate)}</td>
+      <td>${fmtAnalysisPct(r.hensinRate)}</td>
+      <td>${fmtAnalysisPct(r.sankaRate)}</td>
+      <td style="background:#EAF3FB">${fmtAnalysisMon(r.newUriage)}</td>
+      <td style="background:#EAF3FB">${fmtAnalysisMon(r.newArari)}</td>
+      <td style="background:#EDF7EE">${fmtAnalysisMon(r.uriage)}</td>
+      <td style="background:#EDF7EE">${fmtAnalysisMon(r.arari)}</td>
+    </tr>`;
+  }).join('');
+
+  // 全期間は月次売上の概念が曖昧なため注記
+  const isAll = !month || month === 'all';
+  const revNote = isAll
+    ? '<span style="color:#E65100;font-size:11px">※ 全期間選択中は新規売上を表示できません</span>'
+    : '';
+
+  el.innerHTML = `
+    <p class="analysis-subtitle">参画数・月次粗利の高い順 ／ 上位3名はハイライト表示 ${revNote}</p>
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th rowspan="2">順位</th>
+          <th rowspan="2">担当者</th>
+          <th rowspan="2">評価</th>
+          <th rowspan="2">営業タイプ</th>
+          <th rowspan="2">紹介</th>
+          <th rowspan="2">人材返信</th>
+          <th rowspan="2">提案</th>
+          <th rowspan="2">案件返信</th>
+          <th rowspan="2">面談</th>
+          <th rowspan="2">参画</th>
+          <th rowspan="2">提案率</th>
+          <th rowspan="2">返信率</th>
+          <th rowspan="2">参画率</th>
+          <th colspan="2" style="background:#1565C0;font-size:10px">新規成約（営業成果）</th>
+          <th colspan="2" style="background:#1B5E20;font-size:10px">月次稼働（経営数字）</th>
+        </tr>
+        <tr>
+          <th style="background:#1976D2">新規売上</th>
+          <th style="background:#1976D2">新規粗利</th>
+          <th style="background:#2E7D32">月次売上</th>
+          <th style="background:#2E7D32">月次粗利</th>
+        </tr>
+      </thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+}
+
+// ─── 上位会社別分析 テーブルを描画 ──────────────────────────────────
+function renderCompanyAnalysis(kpiRows, revRows, month) {
+  const el = document.getElementById('companySection');
+  if (!kpiRows || kpiRows.length === 0) {
+    el.innerHTML = '<p class="analysis-subtitle">表示月のデータがありません</p>';
+    return;
+  }
+
+  // kpiRows を company ごとにグループ化
+  const groups = {};
+  kpiRows.forEach(r => {
+    const key = String(r.company || '').trim() || '(未入力)';
+    (groups[key] = groups[key] || []).push(r);
+  });
+
+  // 月次売上マップ（会社ベース）: isActiveInMonth で判定した revRows から集計 → 経営数字
+  const revMap = buildRevMap(revRows, 'company');
+  // 新規売上マップ（会社ベース）: contractRows 全件から sales_month===month の新規契約 → 営業成果
+  const newContractRowsComp = getNewContracts(contractRows, month);
+  const revMapNew = buildRevMap(newContractRowsComp, 'company');
+
+  // 集計 → ソート → 上位5社
+  const list = Object.entries(groups)
+    .map(([name, rows]) => {
+      // 参画数: 契約管理の営業対象月×jinzai名でクロス集計（contractRows はグローバル）
+      const s      = calcGroupStats(rows, month, contractRows);
+      const rev    = revMap[name]    || {};
+      const revNew = revMapNew[name] || {};
+      return {
+        name, ...s,
+        uriage   : rev.uriage    || null,
+        arari    : rev.arari     || null,
+        newUriage: revNew.uriage || null,
+        newArari : revNew.arari  || null,
+      };
+    })
+    .sort((a, b) => b.sanka - a.sanka || (b.arari || 0) - (a.arari || 0))
+    .slice(0, 5);
+
+  const tbody = list.map((r, i) => {
+    const rank = i + 1;
+    const rnk  = rank <= 3
+      ? `<span class="rank-badge rank-${rank}">${rank}</span>`
+      : `<span class="rank-badge rank-other">${rank}</span>`;
+    const ev  = evaluateCompany(r);
+    const top = rank <= 3 ? ' class="top-row"' : '';
+    return `<tr${top}>
+      <td>${rnk}</td>
+      <td class="name-cell">${r.name}</td>
+      <td><span class="eval-badge ${ev.cls}">${ev.icon} ${ev.label}</span></td>
+      <td>${r.total}</td>
+      <td>${r.ankTeian}</td>
+      <td>${r.ankHensin}</td>
+      <td>${r.mendan1}</td>
+      <td><b>${r.sanka}</b></td>
+      <td>${fmtAnalysisPct(r.teianRate)}</td>
+      <td>${fmtAnalysisPct(r.hensinRate)}</td>
+      <td>${fmtAnalysisPct(r.sankaRate)}</td>
+      <td style="background:#EAF3FB">${fmtAnalysisMon(r.newUriage)}</td>
+      <td style="background:#EAF3FB">${fmtAnalysisMon(r.newArari)}</td>
+      <td style="background:#EDF7EE">${fmtAnalysisMon(r.uriage)}</td>
+      <td style="background:#EDF7EE">${fmtAnalysisMon(r.arari)}</td>
+    </tr>`;
+  }).join('');
+
+  const total = Object.keys(groups).length;
+  const isAll = !month || month === 'all';
+  const revNote = isAll
+    ? '<span style="color:#E65100;font-size:11px">※ 全期間選択中は新規売上を表示できません</span>'
+    : '';
+  el.innerHTML = `
+    <p class="analysis-subtitle">参画数・粗利の高い順 ／ 全${total}社中 上位5社を表示 ${revNote}</p>
+    <table class="analysis-table">
+      <thead>
+        <tr>
+          <th rowspan="2">順位</th><th rowspan="2">会社名</th><th rowspan="2">評価</th>
+          <th rowspan="2">紹介</th><th rowspan="2">提案</th><th rowspan="2">案件返信</th>
+          <th rowspan="2">面談</th><th rowspan="2">参画</th>
+          <th rowspan="2">提案率</th><th rowspan="2">返信率</th><th rowspan="2">参画率</th>
+          <th colspan="2" style="background:#1565C0;font-size:10px">新規成約（営業成果）</th>
+          <th colspan="2" style="background:#1B5E20;font-size:10px">月次稼働（経営数字）</th>
+        </tr>
+        <tr>
+          <th style="background:#1976D2">新規売上</th>
+          <th style="background:#1976D2">新規粗利</th>
+          <th style="background:#2E7D32">月次売上</th>
+          <th style="background:#2E7D32">月次粗利</th>
+        </tr>
+      </thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+}
+
+// ---------- KPI逆算 ----------
+
+// kpis: calculateKpis の戻り値（転換率を使用）
+// rev : calculateRevenueMetrics の戻り値（稼働粗利との差分計算）
+function renderKpiGoal(kpis, rev) {
+  const input = document.getElementById('goalArari');
+  const resultEl = document.getElementById('goalResult');
+  if (!input || !resultEl) return;
+
+  const goalVal = parseFloat(input.value);
+  if (!goalVal || goalVal <= 0) {
+    resultEl.innerHTML = `<div class="goal-card" style="border-style:dashed">
+      <div class="g-label">目標入力待ち</div>
+      <div class="g-value" style="font-size:14px;color:#B0BEC5">—</div>
+    </div>`;
+    return;
+  }
+
+  // 現在の稼働粗利と残り必要粗利
+  const curArari  = (rev && rev.arari  !== null && rev.arari  !== undefined) ? rev.arari  : 0;
+  const remaining = Math.max(0, goalVal - curArari);
+  const alreadyOk = remaining <= 0;
+
+  // 1件あたり粗利（arariPerSanka があれば使用、なければ30万をデフォルト）
+  const arariPerContract = (rev && rev.arariPerSanka && rev.arariPerSanka > 0)
+    ? rev.arariPerSanka : 30;
+
+  // 必要成約数
+  const needSanka = alreadyOk ? 0 : Math.ceil(remaining / arariPerContract);
+
+  // 成約率②（面談→参画）から必要面談数を逆算
+  const closeRate  = (kpis && kpis.sankaRate2 !== null && kpis.sankaRate2 > 0)
+    ? kpis.sankaRate2 / 100 : 0.4;
+  const needMendan = alreadyOk ? 0 : Math.ceil(needSanka / Math.max(closeRate, 0.05));
+
+  // 参画率①（提案→参画）から必要提案数を逆算
+  const sankaRate1 = (kpis && kpis.sankaRate1 !== null && kpis.sankaRate1 > 0)
+    ? kpis.sankaRate1 / 100 : 0.2;
+  const needTeian  = alreadyOk ? 0 : Math.ceil(needSanka / Math.max(sankaRate1, 0.05));
+
+  // 紹介→提案 の複合転換率から必要紹介数を逆算
+  const teianRate     = (kpis && kpis.teianRate     !== null && kpis.teianRate     > 0)
+    ? kpis.teianRate     / 100 : 0.6;
+  const ninHensinRate = (kpis && kpis.ninHensinRate !== null && kpis.ninHensinRate > 0)
+    ? kpis.ninHensinRate / 100 : 0.7;
+  const introToTeian  = Math.max(teianRate * ninHensinRate, 0.05);
+  const needIntro     = alreadyOk ? 0 : Math.ceil(needTeian / introToTeian);
+
+  const cards = [
+    {
+      label: '残り必要粗利',
+      value: alreadyOk ? '達成済み🎉' : `${remaining.toLocaleString('ja-JP')}万`,
+      unit:  alreadyOk ? '' : '円',
+      cls:   alreadyOk ? 'g-ok' : (remaining > goalVal * 0.5 ? 'g-warn' : '')
+    },
+    { label: '必要成約数',  value: `${needSanka}`,  unit: '件', cls: '' },
+    { label: '必要面談数',  value: `${needMendan}`, unit: '件', cls: '' },
+    { label: '必要提案数',  value: `${needTeian}`,  unit: '件', cls: '' },
+    { label: '必要紹介数',  value: `${needIntro}`,  unit: '件', cls: '' },
+  ];
+
+  const note = `<div class="goal-note" style="width:100%;margin-top:4px">
+    ※ 試算基準：1件あたり粗利 <b>${arariPerContract}万円</b>（現在の稼働平均）
+    　成約率 <b>${Math.round(closeRate * 100)}%</b>　提案→参画率 <b>${Math.round(sankaRate1 * 100)}%</b>
+    　現在の稼働粗利 <b>${curArari}万円</b> ／ 目標 <b>${goalVal}万円</b>
+  </div>`;
+
+  resultEl.innerHTML = cards.map(c => `
+    <div class="goal-card${c.cls ? ' ' + c.cls : ''}">
+      <div class="g-label">${c.label}</div>
+      <div class="g-value">${c.value}</div>
+      <div class="g-unit">${c.unit}</div>
+    </div>`).join('') + note;
+}
+
+// 目標粗利入力時のコールバック
+function onGoalInput() {
+  if (window._lastKpis !== undefined && window._lastRev !== undefined) {
+    renderKpiGoal(window._lastKpis, window._lastRev);
+  }
+}
+
+// ---------- KPI目標達成度（件数ベース） ----------
+// ★ calculateKpis() の戻り値をそのまま受け取る。KPI計算ロジックは一切変更しない。
+// ★ 目標値を変更したい場合は TARGET だけ修正すれば全体に反映される。
+
+const TARGET = {
+  sanka    : 5,   // 月間参画目標（件）
+  interview: 10,  // 月間面談目標（件）
+  teian    : 20,  // 月間提案目標（件）
+};
+
+function renderKpiTarget(kpis) {
+  const el = document.getElementById('kpiTargetSection');
+  if (!el) return;
+
+  // ── 各指標カード（現在値 vs 目標 / 差分） ─────────────────────────
+  const items = [
+    { label: '参画',  cur: kpis.sanka    ?? 0, goal: TARGET.sanka     },
+    { label: '面談',  cur: kpis.mendan1  ?? 0, goal: TARGET.interview  },
+    { label: '提案',  cur: kpis.ankTeian ?? 0, goal: TARGET.teian      },
+  ];
+
+  const cardsHtml = items.map(it => {
+    const gap  = Math.max(0, it.goal - it.cur);
+    const pct  = it.goal > 0 ? Math.round(it.cur / it.goal * 100) : 100;
+    const done = gap === 0;
+    const cls  = done ? 'done' : pct >= 60 ? 'mid' : 'warn';
+    const gapTxt = done ? '達成済み ✓' : `あと ${gap} 件`;
+    return `
+      <div class="tgt-card ${cls}">
+        <div class="tc-label">${it.label}</div>
+        <div class="tc-cur">${it.cur}</div>
+        <div class="tc-goal">目標 ${it.goal} 件（${pct}%）</div>
+        <div class="tc-gap">${gapTxt}</div>
+      </div>`;
+  }).join('');
+
+  // ── 逆算（現在の転換率ベース） ───────────────────────────────────
+  const gapSanka = Math.max(0, TARGET.sanka - (kpis.sanka ?? 0));
+  const lines    = [];
+
+  if (gapSanka === 0) {
+    lines.push({ txt: '参画目標は達成済みです', ok: true });
+  } else {
+    lines.push({ txt: `参画 あと <b>${gapSanka} 件</b> 必要` });
+
+    // 成約率②（面談→参画）から必要追加面談数を逆算
+    if (kpis.sankaRate2 !== null && kpis.sankaRate2 > 0) {
+      const needMendan = Math.ceil(gapSanka / (kpis.sankaRate2 / 100));
+      lines.push({ txt: `成約率 ${kpis.sankaRate2}% → 面談 あと <b>${needMendan} 件</b> 必要` });
+    } else {
+      lines.push({ txt: '成約率データ不足（面談数の逆算は計算できません）', nodata: true });
+    }
+
+    // 参画率①（提案→参画）から必要追加提案数を逆算
+    if (kpis.sankaRate1 !== null && kpis.sankaRate1 > 0) {
+      const needTeian = Math.ceil(gapSanka / (kpis.sankaRate1 / 100));
+      lines.push({ txt: `参画率 ${kpis.sankaRate1}% → 提案 あと <b>${needTeian} 件</b> 必要` });
+    } else {
+      lines.push({ txt: '参画率データ不足（提案数の逆算は計算できません）', nodata: true });
+    }
+  }
+
+  const calcHtml = `
+    <div class="tgt-calc">
+      <div class="tc-title">📐 逆算（現在の転換率ベース）</div>
+      ${lines.map(l =>
+        `<div class="tc-line${l.nodata ? ' no-data' : ''}">` +
+        `${l.ok ? '✅' : l.nodata ? '—' : '▶'} ${l.txt}</div>`
+      ).join('')}
+    </div>`;
+
+  el.innerHTML = `
+    <div class="tgt-wrap">
+      <div class="tgt-cards">${cardsHtml}</div>
+      ${calcHtml}
+    </div>`;
+}
+
+// ---------- 次アクション（シンプル版） ----------
+// 既存の kpis / rev オブジェクトをそのまま受け取り、if 判定でアクションを生成する。
+// 既存ロジック（calculateKpis / calculateRevenueMetrics）は一切変更しない。
+function renderNextAction(kpis, rev, hasPrev, prevKpis, prevRev) {
+  const el = document.getElementById('nextActionBar');
+  if (!el) return;
+
+  prevKpis = prevKpis || {};
+  prevRev  = prevRev  || {};
+
+  const actions = [];
+
+  // ── 紹介数 ──────────────────────────────────────────────────
+  if (kpis.total < 5) {
+    actions.push({ text: `紹介数が少ない（${kpis.total}件）→ 新規開拓を優先` });
+  } else if (hasPrev && prevKpis.total > 0 && kpis.total < prevKpis.total - 3) {
+    actions.push({ text: `紹介数が前月比 −${prevKpis.total - kpis.total}件 → 活動量の拡大が必要` });
+  }
+
+  // ── 提案率 ──────────────────────────────────────────────────
+  if (kpis.teianRate !== null && kpis.teianRate < 40) {
+    actions.push({ text: `提案率が低い（${kpis.teianRate}%）→ 提案精度・マッチング基準を見直し` });
+  }
+
+  // ── 返信率 ──────────────────────────────────────────────────
+  if (kpis.hensinRate !== null && kpis.hensinRate < 30) {
+    actions.push({ text: `返信率が低い（${kpis.hensinRate}%）→ 提案先や文面を改善` });
+  }
+
+  // ── 成約率が高い → 面談数を増やすべき ───────────────────────
+  if (kpis.sankaRate2 !== null && kpis.sankaRate2 >= 60 && kpis.mendan1 < 5) {
+    actions.push({ text: `成約率が高い（${kpis.sankaRate2}%）→ 面談設定数を増やすと参画増が見込める` });
+  }
+
+  // ── 月次売上が前月比増加 ─────────────────────────────────────
+  if (hasPrev && rev.uriage !== null && prevRev.uriage !== null && rev.uriage > prevRev.uriage) {
+    const diff = Math.round((rev.uriage - prevRev.uriage) * 10) / 10;
+    actions.push({ ok: true, text: `月次売上が +${diff}万増加 → 既存取引先の横展開を強化` });
+  }
+
+  // ── 何も引っかからなければ「良好」表示 ──────────────────────
+  if (actions.length === 0) {
+    actions.push({ ok: true, text: '現在の指標は全体的に良好です。現状の活動を継続してください' });
+  }
+
+  // 最大 3 件に絞る
+  const display = actions.slice(0, 3);
+
+  el.innerHTML =
+    `<span class="na-title">📍 次アクション</span>` +
+    display.map(a =>
+      `<span class="na-item${a.ok ? ' ok' : ''}">` +
+      `${a.ok ? '✅' : '📌'} ${a.text}</span>`
+    ).join('');
+}
+
+// ---------- イベント・初期化 ----------
+
+function onMonthChange() {
+  const month = document.getElementById('monthSel').value;
+
+  console.log('━━ [onMonthChange]', month, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('[onMonthChange] allRows:', allRows.length, '/ contractRows:', contractRows.length);
+
+  // KPI系: 紹介日ベースでフィルタ
+  const kpiRows = filterByMonth(allRows, month, 'intro_month');
+  console.log('[onMonthChange] kpiRows:', kpiRows.length,
+    month === 'all' ? '（全期間）' : `（${month}）`);
+
+  // 月次売上・粗利: その月に稼働中の契約
+  const revRows = getActiveContracts(contractRows, month);
+  console.log('[onMonthChange] revRows（稼働中契約）:', revRows.length);
+
+  // 累積: 開始〜当月まで（全期間選択時は全契約の全稼働期間合算）
+  const cumRev = calculateCumulativeRevenue(contractRows, month === 'all' ? null : month);
+
+  const kpis = calculateKpis(kpiRows, month, contractRows);
+  const rev  = calculateRevenueMetrics(revRows);
+
+  // 前月比較
+  const prevMonth   = prevMonthStr(month === 'all' ? '' : month);
+  const prevKpiRows = prevMonth ? filterByMonth(allRows, prevMonth, 'intro_month') : [];
+  const prevRevRows = prevMonth ? getActiveContracts(contractRows, prevMonth)      : [];
+  const hasPrev     = prevKpiRows.length > 0 || prevRevRows.length > 0;
+  const prevKpis    = hasPrev ? calculateKpis(prevKpiRows, prevMonth, contractRows) : {};
+  const prevRev     = hasPrev ? calculateRevenueMetrics(prevRevRows) : {};
+  const prevCum     = hasPrev ? calculateCumulativeRevenue(contractRows, prevMonth) : {};
+
+  const comp = calculateComparison(kpis, prevKpis, hasPrev, rev, prevRev, cumRev, prevCum);
+
+  // 比較テーブルヘッダー更新
+  document.getElementById('compCurHead').textContent = month === 'all' ? '全期間' : month;
+  document.getElementById('compPrvHead').textContent = hasPrev ? prevMonth : '前月';
+
+  // KPI逆算用にグローバル保存（onGoalInput から再計算できるように）
+  window._lastKpis = kpis;
+  window._lastRev  = rev;
+
+  renderKpiCards(kpis, rev, cumRev);
+  renderNextAction(kpis, rev, hasPrev, prevKpis, prevRev);  // 次アクション
+  renderKpiTarget(kpis);                                     // KPI目標達成度
+  renderInsights(kpis, month, prevKpis, rev, prevRev, hasPrev, prevMonth);
+  renderKpiGoal(kpis, rev);                          // KPI逆算
+  renderTantoAnalysis(kpiRows, revRows, month);      // 担当者別パフォーマンス
+  renderCompanyAnalysis(kpiRows, revRows, month);    // 上位会社別分析
+  renderFunnel(kpis);
+  renderComparisonTable(comp);
+  renderContractTable(revRows);   // 稼働明細（当月アクティブ契約行）
+  renderDataTable(kpiRows);
+}
+
+function showError(title, msg, detail) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('errorBox').style.display = 'block';
+  document.getElementById('errTitle').textContent = title;
+  document.getElementById('errMsg').textContent = msg;
+  document.getElementById('errDetail').textContent = detail || '';
+}
+
+async function init() {
+  console.log('[init] start, CONFIG:', CONFIG);
+  try {
+    if (CONFIG.SPREADSHEET_ID === 'YOUR_SPREADSHEET_ID') {
+      showError(
+        '設定が必要です',
+        'index.html の CONFIG.SPREADSHEET_ID を Google スプレッドシートの ID に変更してください。',
+        'スプレッドシートのURLが https://docs.google.com/spreadsheets/d/XXXX/edit の場合、XXXX が ID です。'
+      );
+      return;
+    }
+
+    // ── 営業管理シート（KPI用）──────────────────────────────
+    const raw = await fetchSheetData(CONFIG.SPREADSHEET_ID, CONFIG.SALES_SHEET_NAME);
+    if (!raw || raw.length === 0) {
+      showError('データなし', `シート「${CONFIG.SALES_SHEET_NAME}」にデータが見つかりませんでした。`, '');
+      return;
+    }
+    const mapper = buildColumnMapper(raw[0]);
+    allRows = raw.map(r => normalizeRow(r, mapper));
+    console.log('[init] allRows（営業管理）:', allRows.length);
+
+    // ── 契約管理シート（売上・粗利用）────────────────────────
+    // 取得失敗時はwarningのみ（ダッシュボード自体は表示継続）
+    try {
+      const rawC = await fetchSheetData(CONFIG.SPREADSHEET_ID, CONFIG.CONTRACT_SHEET_NAME);
+      console.log('[init] contractRows 取得件数:', rawC.length);
+      if (rawC.length > 0) {
+        const cMapper = buildContractMapper(rawC[0]);
+        contractRows  = rawC.map(r => normalizeContractRow(r, cMapper));
+        console.log('[init] contractRows 正規化後:', contractRows.length,
+          '| サンプル:', contractRows.slice(0,3).map(r =>
+            `${r.name}: 開始=${r.start_month} 終了=${r.end_month||'継続'} 単価=${r.tanka_uriage}万 稼働=${r.is_active}`));
+      }
+    } catch (ce) {
+      console.warn('[init] 契約管理シートの取得に失敗（売上・粗利は空表示）:', ce.message);
+    }
+
+    // ── 月セレクト（KPI月 + 契約月を合算）───────────────────
+    allMonths = buildMonthOptions(allRows, contractRows);
+    console.log('[init] months:', allMonths);
+    if (allMonths.length === 0) {
+      console.warn('[init] ⚠️ 月候補が0件です。紹介日の日付解析を確認してください。');
+      console.warn('[init] allRows先頭3件の intro_date / intro_month:',
+        allRows.slice(0,3).map(r => `intro_date="${r.intro_date}" → intro_month="${r.intro_month}"`));
+      console.warn('[init] contractRows先頭3件:',
+        contractRows.slice(0,3).map(r =>
+          `start_month="${r.start_month}" end_month="${r.end_month}" is_active=${r.is_active}`));
+    } else {
+      console.log('[init] ✅ 月候補:', allMonths.length, '件:', allMonths);
+    }
+
+    // 【修正】月セレクト構築: value=YYYY-MM, 表示=YYYY/MM
+    const sel = document.getElementById('monthSel');
+    sel.innerHTML = '<option value="all">全期間</option>' +
+      allMonths.map(m => `<option value="${m}">${m.replace('-', '/')}</option>`).join('');
+    if (allMonths.length > 0) sel.value = allMonths[0]; // 最新月
+    console.log('[init] 月セレクタ options:', allMonths);
+
+    document.getElementById('lastUpdate').textContent =
+      `最終更新: ${new Date().toLocaleString('ja-JP')}`;
+
+    // 表示
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    onMonthChange();
+  } catch (e) {
+    console.error('[init] error:', e);
+    showError(
+      'データ取得エラー',
+      'Google スプレッドシートからデータを取得できませんでした。',
+      e.message + '\n\n' + (e.stack || '')
+    );
+  }
+}
+
+init();
+
+/*
+  ★ 設定変更方法
+  ─────────────────────────────────────────────────────────
+  1. CONFIG.SPREADSHEET_ID
+     Google スプレッドシートのURL:
+       https://docs.google.com/spreadsheets/d/【ここがID】/edit
+     上記の【ここがID】の部分を貼り付けてください。
+
+  2. CONFIG.SALES_SHEET_NAME
+     営業管理データのシートタブ名を正確に入力してください。
+     現在: '人材提案'
+
+  3. CONFIG.CONTRACT_SHEET_NAME
+     契約管理データのシートタブ名を入力してください。
+     現在: '契約管理'（売上・粗利カードのデータソース）
+
+  3. スプレッドシートの共有設定
+     「リンクを知っている全員が閲覧可能」に設定してください。
+
+  ─────────────────────────────────────────────────────────
+  ★ 契約管理シートの列設計
+  ─────────────────────────────────────────────────────────
+  必須列: 人材名 / 案件名 / 契約開始日 / 契約終了日 / 月額売上単価 / 月額粗利
+  任意列: 営業対象月 / 仕入れ単価 / 粗利率 / 自動稼働率 / 確定稼働率 / 契約区分 / 稼働フラグ
+  ※ 稼働フラグ: ○=集計対象 / ×または空欄=集計しない
+*/
+</script>
+</body>
+</html>
