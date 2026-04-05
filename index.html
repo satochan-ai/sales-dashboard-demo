@@ -209,6 +209,20 @@ select#monthSel{padding:6px 10px;border:none;border-radius:6px;font-size:13px;ba
 .insight-action::before{content:'→ アクション：';font-weight:bold;color:#1A73E8}
 /* デモバナー */
 .demo-note{background:#FFF9C4;border:1px solid #F9A825;border-radius:6px;padding:8px 14px;font-size:11px;color:#6D4C00;margin-bottom:16px;line-height:1.7}
+/* ── NG理由分析（デモ） ──────────────────────────────────────── */
+.ng-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.ng-grid{grid-template-columns:1fr}}
+.ng-card{background:#F8F9FA;border:1px solid #ECEFF1;border-radius:8px;padding:14px 16px}
+.ng-card-title{font-size:12px;font-weight:700;color:#455A64;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #E0E0E0}
+.ng-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.ng-rank{font-size:10px;font-weight:700;color:#fff;border-radius:3px;width:18px;height:18px;line-height:18px;text-align:center;flex-shrink:0}
+.ng-rank.ng-r1{background:#E53935}.ng-rank.ng-r2{background:#FB8C00}.ng-rank.ng-r3{background:#90A4AE}
+.ng-label{font-size:12px;flex:1;color:#37474F}
+.ng-bar-wrap{width:72px;height:5px;background:#E0E0E0;border-radius:3px;flex-shrink:0}
+.ng-bar{height:5px;border-radius:3px}
+.ng-bar.ng-r1{background:#E53935}.ng-bar.ng-r2{background:#FB8C00}.ng-bar.ng-r3{background:#90A4AE}
+.ng-count{font-size:11px;color:#78909C;min-width:26px;text-align:right}
+.ng-note{font-size:10px;color:#B0BEC5;margin-top:8px;text-align:right}
 </style>
 </head>
 <body>
@@ -257,6 +271,12 @@ select#monthSel{padding:6px 10px;border:none;border-radius:6px;font-size:13px;ba
   <div class="section">
     <h2>📅 週次ファネル（紹介 → 参画）</h2>
     <div id="weeklyFunnelWrap"></div>
+  </div>
+
+  <!-- ⑤' NG理由分析（デモ） -->
+  <div class="section">
+    <h2>🚫 辞退・不採用理由（デモ）</h2>
+    <div id="ngReasonWrap"></div>
   </div>
 
   <!-- ⑥ 考察・アクション提案 -->
@@ -539,6 +559,20 @@ const DEMO_DATA = {
   '2026-02': ROWS_202602,
 };
 const DEMO_MONTHS = ['2026-03', '2026-02']; // 新しい月順
+
+// ── デモ用NG理由サンプルデータ ──────────────────────────────────────────────────
+const DEMO_NG_REASONS = {
+  jinzai: [
+    { label: '希望不一致', count: 3 },
+    { label: '単価',       count: 2 },
+    { label: '他案件確定', count: 1 },
+  ],
+  anken: [
+    { label: 'スキル不足', count: 3 },
+    { label: '充足',       count: 2 },
+    { label: '単価',       count: 1 },
+  ],
+};
 
 // ─── ユーティリティ ─────────────────────────────────────────────────────────────
 
@@ -1363,6 +1397,38 @@ function renderComparisonTable(curKpis, prvKpis, hasPrev, month, prevMonth) {
 }
 
 // 案件一覧テーブル
+// NG理由分析（デモ固定データ表示）
+function renderNgReasons() {
+  const el = document.getElementById('ngReasonWrap');
+  if (!el) return;
+
+  const rankClass = i => ['ng-r1', 'ng-r2', 'ng-r3'][i] || 'ng-r3';
+
+  const renderSide = (title, icon, items) => {
+    const max = items[0] ? items[0].count : 1;
+    const rows = items.map((it, i) => {
+      const rc  = rankClass(i);
+      const pct = Math.round(it.count / max * 100);
+      return `<div class="ng-row">
+        <span class="ng-rank ${rc}">${i + 1}</span>
+        <span class="ng-label">${it.label}</span>
+        <div class="ng-bar-wrap"><div class="ng-bar ${rc}" style="width:${pct}%"></div></div>
+        <span class="ng-count">${it.count}件</span>
+      </div>`;
+    }).join('');
+    return `<div class="ng-card">
+      <div class="ng-card-title">${icon} ${title}</div>
+      ${rows}
+      <div class="ng-note">サンプルデータ・理由取得分ベース</div>
+    </div>`;
+  };
+
+  el.innerHTML = `<div class="ng-grid">
+    ${renderSide('人材側　辞退理由', '🙋', DEMO_NG_REASONS.jinzai)}
+    ${renderSide('案件側　NG 理由',  '🏢', DEMO_NG_REASONS.anken)}
+  </div>`;
+}
+
 function renderDataTable(rows) {
   const badge = (v, testFn) => {
     if (!v || v === '') return '<span class="badge badge-gray">—</span>';
@@ -1508,6 +1574,7 @@ function onMonthChange() {
   renderKpiTarget(kpis);
   renderFunnel(kpis);
   renderComparisonTable(kpis, prevKpis, hasPrev, month, prevMonth);
+  renderNgReasons();
   renderDataTable(kpiRows);
 }
 
